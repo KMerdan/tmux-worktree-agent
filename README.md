@@ -41,7 +41,7 @@ This plugin makes it seamless to manage multiple git worktrees, each with its ow
 Add to `~/.tmux.conf`:
 
 ```bash
-set -g @plugin 'your-github-username/tmux-worktree-agent'
+set -g @plugin 'KMerdan/tmux-worktree-agent'
 
 # Optional configuration
 set -g @worktree-path '~/.worktrees'              # Worktree storage location
