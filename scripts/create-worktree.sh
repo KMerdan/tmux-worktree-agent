@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
-
 # Get script directory and source utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -247,5 +245,10 @@ create_session_and_metadata() {
     switch_to_session "$session_name"
 }
 
-# Run main
-main "$@"
+# Run main with error handling
+if ! main "$@"; then
+    echo ""
+    echo "Press Enter to close..."
+    read -r
+    exit 1
+fi

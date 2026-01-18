@@ -117,12 +117,14 @@ prompt() {
     if command_exists gum; then
         gum input --placeholder "$message" --value "$default"
     else
-        echo -n "$message"
+        # Output prompt to stderr to avoid capturing it
+        echo -n "$message" >&2
         if [ -n "$default" ]; then
-            echo -n " [$default]"
+            echo -n " [$default]" >&2
         fi
-        echo -n ": "
+        echo -n ": " >&2
         read -r response
+        # Output only the response to stdout
         echo "${response:-$default}"
     fi
 }
