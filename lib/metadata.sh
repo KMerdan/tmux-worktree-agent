@@ -6,6 +6,12 @@
 PLUGIN_DIR="${WORKTREE_PLUGIN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 METADATA_FILE="$PLUGIN_DIR/.worktree-sessions.json"
 
+# Expand tilde in path
+expand_tilde() {
+    local path="$1"
+    echo "${path/#\~/$HOME}"
+}
+
 # Initialize metadata file if it doesn't exist
 init_metadata() {
     if [ ! -f "$METADATA_FILE" ]; then
@@ -199,7 +205,8 @@ get_orphaned_sessions() {
 # Get orphaned worktrees (worktree exists, no session)
 get_orphaned_worktrees() {
     local repo_path="$1"
-    local worktree_base="${WORKTREE_PATH:-$HOME/.worktrees}"
+    local worktree_base
+    worktree_base=$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")
 
     if [ ! -d "$worktree_base" ]; then
         echo "[]"

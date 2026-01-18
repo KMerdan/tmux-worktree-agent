@@ -25,8 +25,14 @@ get_tmux_option() {
     fi
 }
 
+# Expand tilde in path
+expand_tilde() {
+    local path="$1"
+    echo "${path/#\~/$HOME}"
+}
+
 # Configuration
-worktree_path=$(get_tmux_option "@worktree-path" "$default_worktree_path")
+worktree_path=$(expand_tilde "$(get_tmux_option "@worktree-path" "$default_worktree_path")")
 agent_cmd=$(get_tmux_option "@worktree-agent-cmd" "$default_agent_cmd")
 auto_agent=$(get_tmux_option "@worktree-auto-agent" "$default_auto_agent")
 browser_key=$(get_tmux_option "@worktree-browser-key" "$default_browser_key")

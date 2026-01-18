@@ -164,11 +164,18 @@ choose() {
     fi
 }
 
+# Expand tilde in path
+expand_tilde() {
+    local path="$1"
+    echo "${path/#\~/$HOME}"
+}
+
 # Get worktree path
 get_worktree_path() {
     local repo="$1"
     local topic="$2"
-    local base_path="${WORKTREE_PATH:-$HOME/.worktrees}"
+    local base_path
+    base_path=$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")
 
     echo "$base_path/$repo/$topic"
 }

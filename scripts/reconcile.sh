@@ -67,7 +67,8 @@ main() {
 
     # Step 2: Scan for untracked worktrees
     # (worktrees that exist in git but not in our metadata)
-    local worktree_base="${WORKTREE_PATH:-$HOME/.worktrees}"
+    local worktree_base
+    worktree_base=$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")
 
     if [ -d "$worktree_base" ]; then
         # Find all git directories in worktree base
