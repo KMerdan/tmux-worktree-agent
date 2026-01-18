@@ -123,7 +123,8 @@ prompt() {
             echo -n " [$default]" >&2
         fi
         echo -n ": " >&2
-        read -r response
+        # Read from /dev/tty to ensure we get input in popup/split
+        read -r response </dev/tty
         # Output only the response to stdout
         echo "${response:-$default}"
     fi
@@ -138,8 +139,8 @@ confirm() {
         gum confirm "$message"
         return $?
     else
-        echo -n "$message [y/N]: "
-        read -r response
+        echo -n "$message [y/N]: " >&2
+        read -r response </dev/tty
         case "$response" in
             [yY]|[yY][eE][sS]) return 0 ;;
             *) return 1 ;;

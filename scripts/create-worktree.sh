@@ -70,8 +70,13 @@ main() {
 
         if [ -z "$branch_name" ]; then
             log_error "Branch name required"
+            echo ""
+            echo "Press Enter to close..."
+            read -r
             exit 1
         fi
+
+        log_info "Branch name entered: $branch_name"
 
         # Check if branch exists
         if ! cd "$repo_path" && git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
@@ -89,11 +94,17 @@ main() {
 
     if [ -z "$topic" ]; then
         log_error "Topic required"
+        echo ""
+        echo "Press Enter to close..."
+        read -r
         exit 1
     fi
 
+    log_info "Topic entered: $topic"
+
     # Sanitize topic for use in paths
     topic=$(sanitize_name "$topic")
+    log_info "Sanitized topic: $topic"
 
     # Step 4: Generate session name
     session_name=$(generate_session_name "$repo_name" "$topic")
