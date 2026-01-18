@@ -160,7 +160,11 @@ main() {
     cd "$repo_path"
 
     if [ "$is_new_branch" = true ]; then
-        git worktree add "$worktree_path" -b "$branch_name"
+        if ! git worktree add "$worktree_path" -b "$branch_name" 2>&1; then
+            log_error "Failed to create worktree with new branch '$branch_name'"
+            log_info "Git error shown above"
+            exit 1
+        fi
     else
         # Check if branch is already checked out in another worktree
         if git worktree list | grep -q "$branch_name"; then
@@ -169,7 +173,11 @@ main() {
             exit 1
         fi
 
-        git worktree add "$worktree_path" "$branch_name"
+        if ! git worktree add "$worktree_path" "$branch_name" 2>&1; then
+            log_error "Failed to create worktree for branch '$branch_name'"
+            log_info "Git error shown above"
+            exit 1
+        fi
     fi
 
     log_success "Worktree created"
