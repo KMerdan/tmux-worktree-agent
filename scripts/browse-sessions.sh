@@ -95,6 +95,13 @@ get_agent_status() {
 
     # Find agent process in session
     local pane_pid=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" | head -1)
+
+    # Validate pane_pid before using in pgrep
+    if [ -z "$pane_pid" ]; then
+        echo "◌"  # No pane found
+        return
+    fi
+
     local agent_pid=$(pgrep -P "$pane_pid" "$agent_process" 2>/dev/null)
 
     if [ -z "$agent_pid" ]; then
@@ -110,7 +117,13 @@ get_agent_status() {
     # Check CPU usage
     local cpu_usage=$(ps -p "$agent_pid" -o %cpu= 2>/dev/null | awk '{print int($1)}')
 
-    if [ "$time_diff" -lt 15 ] && [ "$cpu_usage" -gt 5 ]; then
+    # Validate cpu_usage before arithmetic comparison
+    if [ -z "$cpu_usage" ]; then
+        echo "○"  # Can't determine CPU, assume idle
+        return
+    fi
+
+    if [ "$time_diff" -lt 15 ] && [ "$cpu_usage" -ge 5 ]; then
         echo "●"  # Working
     else
         echo "○"  # Waiting/idle
