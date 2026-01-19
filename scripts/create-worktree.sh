@@ -275,7 +275,7 @@ create_session_and_metadata() {
 
     # Save metadata
     save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
-        "$worktree_path" "$repo_path" "$agent_available"
+        "$worktree_path" "$repo_path" "$agent_available" ""
 
     log_success "Session created: $session_name"
 

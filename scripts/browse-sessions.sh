@@ -31,11 +31,12 @@ generate_preview() {
     fi
 
     # Extract fields
-    local repo branch worktree_path created_at
+    local repo branch worktree_path created_at description
     repo=$(echo "$session_data" | jq -r '.repo')
     branch=$(echo "$session_data" | jq -r '.branch')
     worktree_path=$(echo "$session_data" | jq -r '.worktree_path')
     created_at=$(echo "$session_data" | jq -r '.created_at')
+    description=$(echo "$session_data" | jq -r '.description // empty')
 
     # Display session info
     echo "╭─ Session Info ────────────────────────────╮"
@@ -43,6 +44,18 @@ generate_preview() {
     echo "│ Repo:    $repo"
     echo "│ Branch:  $branch"
     echo "│ Created: $created_at"
+
+    if [ -n "$description" ]; then
+        # Truncate description if too long (max 100 chars)
+        local desc_display="$description"
+        if [ ${#description} -gt 100 ]; then
+            desc_display="${description:0:97}..."
+        fi
+        echo "│"
+        echo "│ Description:"
+        echo "│   $desc_display"
+    fi
+
     echo "╰───────────────────────────────────────────╯"
     echo ""
 

@@ -28,6 +28,7 @@ save_session() {
     local worktree_path="$5"
     local main_repo_path="$6"
     local agent_running="${7:-false}"
+    local description="${8:-}"
 
     init_metadata
 
@@ -43,6 +44,7 @@ save_session() {
         --arg main_repo_path "$main_repo_path" \
         --arg created_at "$created_at" \
         --argjson agent_running "$agent_running" \
+        --arg description "$description" \
         '{
             repo: $repo,
             topic: $topic,
@@ -50,7 +52,8 @@ save_session() {
             worktree_path: $worktree_path,
             main_repo_path: $main_repo_path,
             created_at: $created_at,
-            agent_running: $agent_running
+            agent_running: $agent_running,
+            description: $description
         }')
 
     jq --arg session "$session_name" \
@@ -266,6 +269,38 @@ export_metadata() {
     jq -r 'to_entries[] |
         "\(.key)\n  Repo: \(.value.repo)\n  Branch: \(.value.branch)\n  Path: \(.value.worktree_path)\n  Created: \(.value.created_at)\n"' \
         "$METADATA_FILE"
+}
+
+# Update session description
+update_session_description() {
+    local session_name="$1"
+    local description="$2"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    if ! session_in_metadata "$session_name"; then
+        return 1
+    fi
+
+    jq --arg session "$session_name" \
+       --arg description "$description" \
+       '.[$session].description = $description' \
+       "$METADATA_FILE" > "$METADATA_FILE.tmp" && mv "$METADATA_FILE.tmp" "$METADATA_FILE"
+}
+
+# Get session description
+get_session_description() {
+    local session_name="$1"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    jq -r --arg session "$session_name" \
+       '.[$session].description // empty' \
+       "$METADATA_FILE"
 }
 
 # Backup metadata

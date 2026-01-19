@@ -38,11 +38,12 @@ main() {
     fi
 
     # Get metadata
-    local repo branch topic worktree_path
+    local repo branch topic worktree_path description
     repo=$(get_session_field "$session_name" "repo")
     branch=$(get_session_field "$session_name" "branch")
     topic=$(get_session_field "$session_name" "topic")
     worktree_path=$(get_session_field "$session_name" "worktree_path")
+    description=$(get_session_description "$session_name" 2>/dev/null || echo "")
 
     # Output based on format
     case "$format" in
@@ -60,6 +61,9 @@ main() {
             ;;
         path)
             echo "$worktree_path"
+            ;;
+        description)
+            echo "$description"
             ;;
         short)
             echo "🌳 $branch"
