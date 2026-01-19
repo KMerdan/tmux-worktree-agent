@@ -79,6 +79,44 @@ generate_preview() {
     fi
 }
 
+# Get agent status for a session
+get_agent_status() {
+    local session_name="$1"
+
+    # If session doesn't exist, return N/A
+    if ! tmux has-session -t "$session_name" 2>/dev/null; then
+        echo "─"
+        return
+    fi
+
+    # Get agent command from environment
+    local agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+    local agent_process="${agent_cmd%% *}"  # First word only
+
+    # Find agent process in session
+    local pane_pid=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" | head -1)
+    local agent_pid=$(pgrep -P "$pane_pid" "$agent_process" 2>/dev/null)
+
+    if [ -z "$agent_pid" ]; then
+        echo "◌"  # No agent process
+        return
+    fi
+
+    # Check activity: output in last 15 seconds
+    local last_activity=$(tmux display-message -t "$session_name" -p "#{pane_activity}")
+    local current_time=$(date +%s)
+    local time_diff=$((current_time - last_activity))
+
+    # Check CPU usage
+    local cpu_usage=$(ps -p "$agent_pid" -o %cpu= 2>/dev/null | awk '{print int($1)}')
+
+    if [ "$time_diff" -lt 15 ] && [ "$cpu_usage" -gt 5 ]; then
+        echo "●"  # Working
+    else
+        echo "○"  # Waiting/idle
+    fi
+}
+
 # Export function for fzf preview
 export -f generate_preview
 export SCRIPT_DIR PLUGIN_DIR
