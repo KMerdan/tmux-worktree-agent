@@ -79,7 +79,8 @@ main() {
         log_info "Branch name entered: $branch_name"
 
         # Check if branch exists
-        if ! cd "$repo_path" && git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
+        cd "$repo_path" || exit 1
+        if ! git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
             if confirm "Branch '$branch_name' doesn't exist. Create new branch?"; then
                 is_new_branch=true
             else
