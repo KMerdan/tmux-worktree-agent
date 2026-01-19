@@ -92,6 +92,57 @@ generate_preview() {
     fi
 }
 
+# Get agent status for a session
+get_agent_status() {
+    local session_name="$1"
+
+    # If session doesn't exist, return N/A
+    if ! tmux has-session -t "$session_name" 2>/dev/null; then
+        echo "─"
+        return
+    fi
+
+    # Get agent command from environment
+    local agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+    local agent_process="${agent_cmd%% *}"  # First word only
+
+    # Find agent process in session
+    local pane_pid=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" | head -1)
+
+    # Validate pane_pid before using in pgrep
+    if [ -z "$pane_pid" ]; then
+        echo "◌"  # No pane found
+        return
+    fi
+
+    local agent_pid=$(pgrep -P "$pane_pid" "$agent_process" 2>/dev/null)
+
+    if [ -z "$agent_pid" ]; then
+        echo "◌"  # No agent process
+        return
+    fi
+
+    # Check activity: output in last 15 seconds
+    local last_activity=$(tmux display-message -t "$session_name" -p "#{pane_activity}")
+    local current_time=$(date +%s)
+    local time_diff=$((current_time - last_activity))
+
+    # Check CPU usage
+    local cpu_usage=$(ps -p "$agent_pid" -o %cpu= 2>/dev/null | awk '{print int($1)}')
+
+    # Validate cpu_usage before arithmetic comparison
+    if [ -z "$cpu_usage" ]; then
+        echo "○"  # Can't determine CPU, assume idle
+        return
+    fi
+
+    if [ "$time_diff" -lt 15 ] && [ "$cpu_usage" -ge 5 ]; then
+        echo "●"  # Working
+    else
+        echo "○"  # Waiting/idle
+    fi
+}
+
 # Export function for fzf preview
 export -f generate_preview
 export SCRIPT_DIR PLUGIN_DIR
@@ -141,9 +192,16 @@ build_session_list() {
             status_icon="✗"  # Both missing (stale)
         fi
 
-        # Format: status session branch path
-        printf "%-2s %-30s %-25s %s\n" \
+        # Get agent status
+        local agent_status="─"
+        if $session_exists; then
+            agent_status=$(get_agent_status "$session")
+        fi
+
+        # Format: session_status agent_status session branch path
+        printf "%-2s %-2s %-30s %-25s %s\n" \
             "$status_icon" \
+            "$agent_status" \
             "$session" \
             "$branch" \
             "$worktree_path"
@@ -174,13 +232,13 @@ main() {
     local selected
     selected=$(echo "$session_list" | fzf \
         --ansi \
-        --header="Worktree Sessions ($(count_sessions) active) | Enter: switch | Ctrl-d: delete | Ctrl-r: refresh | Tab: preview" \
+        --header="Worktree Sessions ($(count_sessions) active) | [S][A] Session+Agent Status | Enter: switch | Ctrl-d: delete | Tab: preview" \
         --header-lines=0 \
         --layout=reverse \
-        --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {2}'" \
+        --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {3}'" \
         --preview-window=right:60%:wrap \
-        --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {2}")' \
-        --bind='ctrl-r:reload(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && '"$(declare -f build_session_list)"' && build_session_list")' \
+        --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {3}")' \
+        --bind='ctrl-r:reload(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && '"$(declare -f get_agent_status; declare -f build_session_list)"' && build_session_list")' \
         --bind='tab:toggle-preview' \
         --bind='esc:cancel')
 
@@ -188,9 +246,9 @@ main() {
         exit 0
     fi
 
-    # Extract session name (second field)
+    # Extract session name (third field)
     local session_name
-    session_name=$(echo "$selected" | awk '{print $2}')
+    session_name=$(echo "$selected" | awk '{print $3}')
 
     # Get status icon
     local status_icon

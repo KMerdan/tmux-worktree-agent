@@ -181,10 +181,16 @@ prefix + K
 The session browser (`prefix + w`) provides:
 
 **List View:**
-- `●` - Active session (session + worktree exist)
-- `○` - Worktree only (no session running)
-- `⚠` - Session only (worktree deleted)
-- `✗` - Stale (both missing, will be cleaned)
+- Session Status:
+  - `●` - Active session (session + worktree exist)
+  - `○` - Worktree only (no session running)
+  - `⚠` - Session only (worktree deleted)
+  - `✗` - Stale (both missing, will be cleaned)
+- Agent Status:
+  - `●` - Agent actively working (recent output + CPU)
+  - `○` - Agent waiting for input (idle)
+  - `◌` - Agent stopped (no process)
+  - `─` - N/A (session not running)
 
 **Keybindings:**
 - `Enter` - Switch to session (or recreate if needed)

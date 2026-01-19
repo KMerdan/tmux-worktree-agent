@@ -54,7 +54,9 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 - Error handling: Manual error handling without set -e for better user feedback
 
 **scripts/browse-sessions.sh** - fzf browser for sessions
-- Status indicators: ● (active), ○ (worktree only), ⚠ (session only), ✗ (stale)
+- Status indicators:
+  - Session: ● (active), ○ (worktree only), ⚠ (session only), ✗ (stale)
+  - Agent: ● (working), ○ (waiting), ◌ (stopped), ─ (N/A)
 - Auto-cleanup of stale metadata on launch
 - Preview pane shows: session info, active windows, git status
 - Actions: Enter (switch), Ctrl-d (delete), Ctrl-r (refresh), Tab (toggle preview)
@@ -85,21 +87,43 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 
 ### Testing Changes
 
-Since this is a tmux plugin, testing requires tmux environment:
+Since this is a tmux plugin, testing requires a tmux environment. **IMPORTANT**: You must be inside a tmux session to test the plugin.
 
 ```bash
 # 1. Make changes to scripts or plugin entry point
 
-# 2. Reload tmux configuration
+# 2. Make scripts executable if creating new files
+chmod +x scripts/*.sh
+
+# 3. Reload tmux configuration to apply changes
 tmux source-file ~/.tmux.conf
 
-# 3. Test interactively using keybindings:
+# 4. Test interactively using keybindings:
 # - prefix + C-w (create worktree)
 # - prefix + w (browse sessions)
 # - prefix + W (quick create)
 # - prefix + K (kill worktree)
 # - prefix + R (reconcile)
+
+# 5. Check for errors in tmux command output
+tmux display-message "Test message"
+
+# 6. Debug script execution
+# Add debug logging to scripts: log_debug "Message" (from utils.sh)
+# View tmux messages: prefix + ~
 ```
+
+### Manual Testing Checklist
+
+When making changes, test these scenarios:
+1. Create worktree from non-worktree session
+2. Create worktree from within existing worktree
+3. Quick create (--quick mode)
+4. Browse and switch between sessions
+5. Handle orphaned sessions (delete worktree manually, then browse)
+6. Handle orphaned worktrees (kill session manually, then browse)
+7. Test with both popup (tmux >= 3.2) and split-window fallback
+8. Test input prompts in both popup and split-window modes
 
 ### Common Development Patterns
 
