@@ -219,7 +219,7 @@ main() {
     local selected
     selected=$(echo "$session_list" | fzf \
         --ansi \
-        --header="Worktree Sessions ($(count_sessions) active) | Enter: switch | Ctrl-d: delete | Ctrl-r: refresh | Tab: preview" \
+        --header="Worktree Sessions ($(count_sessions) active) | [S][A] Session+Agent Status | Enter: switch | Ctrl-d: delete | Tab: preview" \
         --header-lines=0 \
         --layout=reverse \
         --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {3}'" \
