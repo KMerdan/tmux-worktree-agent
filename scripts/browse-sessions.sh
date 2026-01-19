@@ -179,9 +179,16 @@ build_session_list() {
             status_icon="✗"  # Both missing (stale)
         fi
 
-        # Format: status session branch path
-        printf "%-2s %-30s %-25s %s\n" \
+        # Get agent status
+        local agent_status="─"
+        if $session_exists; then
+            agent_status=$(get_agent_status "$session")
+        fi
+
+        # Format: session_status agent_status session branch path
+        printf "%-2s %-2s %-30s %-25s %s\n" \
             "$status_icon" \
+            "$agent_status" \
             "$session" \
             "$branch" \
             "$worktree_path"
@@ -215,9 +222,9 @@ main() {
         --header="Worktree Sessions ($(count_sessions) active) | Enter: switch | Ctrl-d: delete | Ctrl-r: refresh | Tab: preview" \
         --header-lines=0 \
         --layout=reverse \
-        --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {2}'" \
+        --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {3}'" \
         --preview-window=right:60%:wrap \
-        --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {2}")' \
+        --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {3}")' \
         --bind='ctrl-r:reload(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && '"$(declare -f build_session_list)"' && build_session_list")' \
         --bind='tab:toggle-preview' \
         --bind='esc:cancel')
@@ -226,9 +233,9 @@ main() {
         exit 0
     fi
 
-    # Extract session name (second field)
+    # Extract session name (third field)
     local session_name
-    session_name=$(echo "$selected" | awk '{print $2}')
+    session_name=$(echo "$selected" | awk '{print $3}')
 
     # Get status icon
     local status_icon
