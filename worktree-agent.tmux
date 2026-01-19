@@ -11,6 +11,7 @@ default_create_key="C-w"
 default_quick_create_key="W"
 default_kill_key="K"
 default_refresh_key="R"
+default_helper_key="?"
 
 # Get tmux options with defaults
 get_tmux_option() {
@@ -40,6 +41,7 @@ create_key=$(get_tmux_option "@worktree-create-key" "$default_create_key")
 quick_create_key=$(get_tmux_option "@worktree-quick-create-key" "$default_quick_create_key")
 kill_key=$(get_tmux_option "@worktree-kill-key" "$default_kill_key")
 refresh_key=$(get_tmux_option "@worktree-refresh-key" "$default_refresh_key")
+helper_key=$(get_tmux_option "@worktree-helper-key" "$default_helper_key")
 
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
@@ -53,6 +55,7 @@ tmux bind-key "$create_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts
 tmux bind-key "$quick_create_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts/create-worktree.sh --quick"
 tmux bind-key "$kill_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts/kill-worktree.sh"
 tmux bind-key "$refresh_key" run-shell "$CURRENT_DIR/scripts/reconcile.sh"
+tmux bind-key "$helper_key" display-popup -E -w 70% -h 85% "$CURRENT_DIR/scripts/show-helper.sh"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"
