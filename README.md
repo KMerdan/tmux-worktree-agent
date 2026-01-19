@@ -228,6 +228,7 @@ The plugin automatically handles orphaned states:
 | `prefix + K` | Kill current worktree + session |
 | `prefix + R` | Reconcile/refresh metadata |
 | `prefix + D` | Edit session description |
+| `prefix + ?` | Show help/keybindings |
 
 ### Custom Keybindings
 
@@ -239,6 +240,7 @@ set -g @worktree-quick-create-key 'W'
 set -g @worktree-kill-key 'K'
 set -g @worktree-refresh-key 'R'
 set -g @worktree-description-key 'D'
+set -g @worktree-helper-key '?'
 ```
 
 ### Agent Configuration
