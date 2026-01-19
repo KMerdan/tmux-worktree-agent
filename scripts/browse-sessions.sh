@@ -247,11 +247,5 @@ main() {
     esac
 }
 
-# Run main in tmux popup
-if [ -n "$TMUX" ]; then
-    # Run in popup if inside tmux
-    display_in_tmux "bash $0"
-else
-    # Run directly if not in tmux
-    main
-fi
+# Run main directly (popup handled by keybinding)
+main

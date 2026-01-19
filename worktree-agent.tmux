@@ -48,7 +48,7 @@ tmux set-environment -g WORKTREE_AUTO_AGENT "$auto_agent"
 tmux set-environment -g WORKTREE_PLUGIN_DIR "$CURRENT_DIR"
 
 # Set up keybindings
-tmux bind-key "$browser_key" run-shell "$CURRENT_DIR/scripts/browse-sessions.sh"
+tmux bind-key "$browser_key" display-popup -E -w 90% -h 90% "$CURRENT_DIR/scripts/browse-sessions.sh"
 tmux bind-key "$create_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts/create-worktree.sh"
 tmux bind-key "$quick_create_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts/create-worktree.sh --quick"
 tmux bind-key "$kill_key" display-popup -E -w 80% -h 80% "$CURRENT_DIR/scripts/kill-worktree.sh"
