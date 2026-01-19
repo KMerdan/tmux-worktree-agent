@@ -7,6 +7,7 @@ A tmux plugin that optimizes workflows for managing multiple AI coding agent ins
 - **One-Keybind Workflow**: Create isolated worktree + tmux session with a single keystroke
 - **Agent-Agnostic**: Works with any AI coding CLI (Claude Code, Gemini, OpenCode, Codex, etc.)
 - **Smart Browser**: Fuzzy search and switch between worktree sessions with fzf
+- **Session Descriptions**: Provide context for AI agents on first shell startup
 - **Orphan Detection**: Automatically detects and helps fix orphaned sessions/worktrees
 - **TPM Ready**: Simple installation via Tmux Plugin Manager
 - **Status Line Integration**: Visual indicators for worktree sessions
@@ -55,6 +56,39 @@ Then reload tmux config and install:
 tmux source-file ~/.tmux.conf
 
 # Install plugins (prefix + I)
+```
+
+### Shell Integration (Optional)
+
+For session descriptions and context banners, add to your shell config:
+
+**Bash** (`~/.bashrc`):
+```bash
+# Source tmux-worktree-agent shell integration
+source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
+```
+
+**Zsh** (`~/.zshrc`):
+```bash
+# Source tmux-worktree-agent shell integration
+source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
+```
+
+This enables:
+- **Session descriptions**: Prompts you to describe the session purpose on first shell startup
+- **Context banners**: Displays repo, branch, topic, and description when starting a shell
+- **AI agent context**: Agents can read the description to understand what you're working on
+
+Example banner:
+```
+╭─ Worktree Session ──────────────────────────────────╮
+│ Repo:   tmux-worktree-agent                         │
+│ Branch: feat/add-description                        │
+│ Topic:  add-description                             │
+│                                                     │
+│ 📝 Implementing user-provided descriptions for     │
+│    sessions to give AI agents initial context      │
+╰─────────────────────────────────────────────────────╯
 ```
 
 ## Usage
@@ -193,6 +227,7 @@ The plugin automatically handles orphaned states:
 | `prefix + W` | Quick create (auto-detect current branch) |
 | `prefix + K` | Kill current worktree + session |
 | `prefix + R` | Reconcile/refresh metadata |
+| `prefix + D` | Edit session description |
 
 ### Custom Keybindings
 
@@ -203,6 +238,7 @@ set -g @worktree-create-key 'C-w'
 set -g @worktree-quick-create-key 'W'
 set -g @worktree-kill-key 'K'
 set -g @worktree-refresh-key 'R'
+set -g @worktree-description-key 'D'
 ```
 
 ### Agent Configuration
@@ -277,7 +313,8 @@ Session metadata stored in: `~/.tmux/plugins/tmux-worktree-agent/.worktree-sessi
     "worktree_path": "/Users/you/.worktrees/myrepo/feature-auth",
     "main_repo_path": "/Users/you/projects/myrepo",
     "created_at": "2026-01-18T15:30:00Z",
-    "agent_running": true
+    "agent_running": true,
+    "description": "Implementing OAuth2 authentication with social login providers"
   }
 }
 ```
@@ -382,6 +419,7 @@ set -g status-right '#(~/.tmux/plugins/tmux-worktree-agent/scripts/session-info.
 # icon         -> 🌳
 # branch       -> feature/auth
 # topic        -> oauth-impl
+# description  -> Implementing OAuth2 authentication...
 # short        -> 🌳 feature/auth
 # full         -> 🌳 myrepo/oauth-impl (feature/auth)
 # status-line  -> [myrepo-oauth-impl] 🌳 feature/auth
@@ -399,6 +437,8 @@ tmux-worktree-agent/
 │   ├── browse-sessions.sh       # fzf browser
 │   ├── kill-worktree.sh         # Cleanup
 │   ├── session-info.sh          # Get metadata
+│   ├── session-description.sh   # Manage session descriptions
+│   ├── shell-init.sh            # Shell integration for banners
 │   ├── reconcile.sh             # Fix orphaned states
 │   └── utils.sh                 # Shared utilities
 ├── lib/
