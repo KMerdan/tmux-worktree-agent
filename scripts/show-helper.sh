@@ -71,6 +71,7 @@ show_main_shortcuts() {
     echo -e "  ${CYAN}C-a C-w${NC}    Create new worktree (full mode - choose branch + topic)"
     echo -e "  ${CYAN}C-a W${NC}      Quick create (use current branch or create new)"
     echo -e "  ${CYAN}C-a w${NC}      Browse/switch worktree sessions"
+    echo -e "  ${CYAN}C-a D${NC}      Edit session description (for AI agent context)"
     echo -e "  ${CYAN}C-a K${NC}      Kill current worktree + session"
     echo -e "  ${CYAN}C-a R${NC}      Reconcile/refresh metadata"
     echo ""
