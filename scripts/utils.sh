@@ -123,8 +123,13 @@ prompt() {
             echo -n " [$default]" >&2
         fi
         echo -n ": " >&2
-        # Read from /dev/tty to ensure we get input in popup/split
-        read -r response </dev/tty
+        # Read input - try /dev/tty first, fall back to stdin
+        local response
+        if [ -r /dev/tty ]; then
+            read -r response </dev/tty
+        else
+            read -r response
+        fi
         # Output only the response to stdout
         echo "${response:-$default}"
     fi
@@ -140,7 +145,12 @@ confirm() {
         return $?
     else
         echo -n "$message [y/N]: " >&2
-        read -r response </dev/tty
+        local response
+        if [ -r /dev/tty ]; then
+            read -r response </dev/tty
+        else
+            read -r response
+        fi
         case "$response" in
             [yY]|[yY][eE][sS]) return 0 ;;
             *) return 1 ;;
