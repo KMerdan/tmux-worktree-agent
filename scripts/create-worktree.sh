@@ -45,14 +45,40 @@ main() {
     # Step 2: Get branch name
     if [ "$QUICK_MODE" = true ]; then
         # Quick mode: use current branch
-        branch_name=$(get_current_branch)
+        local current_branch
+        current_branch=$(get_current_branch)
 
-        if [ -z "$branch_name" ] || [ "$branch_name" = "HEAD" ]; then
+        if [ -z "$current_branch" ] || [ "$current_branch" = "HEAD" ]; then
             log_error "Not on a valid branch. Use full create mode (prefix + C-w)"
             exit 1
         fi
 
-        log_info "Creating worktree from current branch: $branch_name"
+        # Check if current branch is already checked out in a worktree
+        cd "$repo_path" || exit 1
+        if git worktree list | grep -q "\[$current_branch\]"; then
+            log_warn "Branch '$current_branch' is already checked out"
+            log_info "Quick mode will create a new branch based on '$current_branch'"
+            echo ""
+
+            # Prompt for new branch name
+            local new_branch
+            new_branch=$(prompt "New branch name (based on $current_branch)")
+
+            if [ -z "$new_branch" ]; then
+                log_error "Branch name required"
+                echo ""
+                echo "Press Enter to close..."
+                read -r
+                exit 1
+            fi
+
+            branch_name="$new_branch"
+            is_new_branch=true
+            log_info "Will create new branch: $branch_name (from $current_branch)"
+        else
+            branch_name="$current_branch"
+            log_info "Creating worktree from current branch: $branch_name"
+        fi
     else
         # Full mode: prompt for branch
         echo "=== Create Worktree Session ==="
