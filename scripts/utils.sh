@@ -177,6 +177,74 @@ choose() {
     fi
 }
 
+# Select branch with arrow key navigation
+select_branch() {
+    local repo_path="$1"
+    local allow_new="${2:-true}"
+
+    # Fallback to simple prompt if fzf not available
+    if ! command_exists fzf; then
+        log_warn "fzf not available, using simple input"
+        prompt "Branch name"
+        return
+    fi
+
+    # Get branches sorted by recent activity
+    local branches
+    branches=$(cd "$repo_path" && \
+        git for-each-ref --sort=-committerdate refs/heads/ \
+            --format='%(refname:short)|%(committerdate:relative)|%(subject)' 2>/dev/null)
+
+    if [ -z "$branches" ]; then
+        log_warn "No branches found in repository"
+        prompt "Branch name"
+        return
+    fi
+
+    # Format branches for display (align columns)
+    local formatted_branches
+    formatted_branches=$(echo "$branches" | awk -F'|' '{
+        branch = $1
+        date = $2
+        subject = substr($3, 1, 50)
+        printf "%-30s  %-20s  %s\n", branch, date, subject
+    }')
+
+    # Use fzf with preview
+    local selected
+    selected=$(echo "$formatted_branches" | fzf \
+        --ansi \
+        --header="↑↓ Navigate | Enter: Select | Type: Filter/New Branch | Esc: Cancel" \
+        --layout=reverse \
+        --preview="cd '$repo_path' && git log --oneline --graph --color=always {1} 2>/dev/null | head -20" \
+        --preview-window=right:60%:wrap \
+        --bind='esc:cancel' \
+        --print-query \
+        --delimiter=' ' \
+        --nth=1 \
+        --with-nth=1,2,3)
+
+    # fzf with --print-query outputs query on first line, selection on second
+    # If user types and presses Enter without selecting, only query is returned
+    # If user selects a branch, both query and selection are returned
+    local query selection
+    if [ -n "$selected" ]; then
+        query=$(echo "$selected" | head -1)
+        selection=$(echo "$selected" | tail -1)
+
+        # If selection is empty or same as query, user typed a branch name
+        if [ -z "$selection" ] || [ "$query" = "$selection" ]; then
+            echo "$query"
+        else
+            # Extract branch name (first column)
+            echo "$selection" | awk '{print $1}'
+        fi
+    else
+        # User cancelled (Esc)
+        return 1
+    fi
+}
+
 # Expand tilde in path
 expand_tilde() {
     local path="$1"

@@ -80,22 +80,16 @@ main() {
             log_info "Creating worktree from current branch: $branch_name"
         fi
     else
-        # Full mode: prompt for branch
+        # Full mode: interactive branch selection with arrow navigation
         echo "=== Create Worktree Session ==="
         echo ""
 
-        # Get list of branches for autocomplete hint
-        local branches
-        branches=$(cd "$repo_path" && git branch --format='%(refname:short)' | head -5)
+        log_info "Select branch (or type new branch name)..."
+        branch_name=$(select_branch "$repo_path")
 
-        echo "Existing branches (showing first 5):"
-        echo "$branches"
-        echo ""
-
-        branch_name=$(prompt "Branch name")
-
-        if [ -z "$branch_name" ]; then
-            log_error "Branch name required"
+        # Check if user cancelled (select_branch returns non-zero)
+        if [ $? -ne 0 ] || [ -z "$branch_name" ]; then
+            log_error "No branch selected"
             echo ""
             echo "Press Enter to close..."
             read -r
