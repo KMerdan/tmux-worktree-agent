@@ -29,6 +29,7 @@ save_session() {
     local main_repo_path="$6"
     local agent_running="${7:-false}"
     local description="${8:-}"
+    local agent_cmd="${9:-}"
 
     init_metadata
 
@@ -45,6 +46,7 @@ save_session() {
         --arg created_at "$created_at" \
         --argjson agent_running "$agent_running" \
         --arg description "$description" \
+        --arg agent_cmd "$agent_cmd" \
         '{
             repo: $repo,
             topic: $topic,
@@ -53,7 +55,8 @@ save_session() {
             main_repo_path: $main_repo_path,
             created_at: $created_at,
             agent_running: $agent_running,
-            description: $description
+            description: $description,
+            agent_cmd: $agent_cmd
         }')
 
     jq --arg session "$session_name" \
@@ -300,6 +303,19 @@ get_session_description() {
 
     jq -r --arg session "$session_name" \
        '.[$session].description // empty' \
+       "$METADATA_FILE"
+}
+
+# Get session agent command
+get_session_agent() {
+    local session_name="$1"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    jq -r --arg session "$session_name" \
+       '.[$session].agent_cmd // empty' \
        "$METADATA_FILE"
 }
 

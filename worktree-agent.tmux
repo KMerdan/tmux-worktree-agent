@@ -5,6 +5,7 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default configuration
 default_worktree_path="$HOME/.worktrees"
 default_agent_cmd="claude"
+default_agent_list="claude"
 default_auto_agent="on"
 default_browser_key="w"
 default_create_key="C-w"
@@ -36,6 +37,7 @@ expand_tilde() {
 # Configuration
 worktree_path=$(expand_tilde "$(get_tmux_option "@worktree-path" "$default_worktree_path")")
 agent_cmd=$(get_tmux_option "@worktree-agent-cmd" "$default_agent_cmd")
+agent_list=$(get_tmux_option "@worktree-agent-list" "$default_agent_list")
 auto_agent=$(get_tmux_option "@worktree-auto-agent" "$default_auto_agent")
 browser_key=$(get_tmux_option "@worktree-browser-key" "$default_browser_key")
 create_key=$(get_tmux_option "@worktree-create-key" "$default_create_key")
@@ -48,6 +50,7 @@ description_key=$(get_tmux_option "@worktree-description-key" "$default_descript
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
 tmux set-environment -g WORKTREE_AGENT_CMD "$agent_cmd"
+tmux set-environment -g WORKTREE_AGENT_LIST "$agent_list"
 tmux set-environment -g WORKTREE_AUTO_AGENT "$auto_agent"
 tmux set-environment -g WORKTREE_PLUGIN_DIR "$CURRENT_DIR"
 
@@ -69,3 +72,8 @@ metadata_file="$CURRENT_DIR/.worktree-sessions.json"
 if [ ! -f "$metadata_file" ]; then
     echo '{}' > "$metadata_file"
 fi
+
+# Append agent status to status bar (after theme plugins have set status-right)
+tmux set -g status-interval 5
+tmux set -ag status-right " #[fg=#89b4fa]#($CURRENT_DIR/scripts/status-agents.sh)"
+tmux set -g status-right-length 200

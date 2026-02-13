@@ -7,6 +7,9 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
 
+# Brief pause on error so user can read messages before popup closes
+trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
+
 # Parse arguments
 QUICK_MODE=false
 if [ "$1" = "--quick" ]; then
@@ -42,9 +45,9 @@ main() {
     local repo_name
     repo_name=$(get_repo_name "$repo_path")
 
-    # Step 2: Get branch name
+    # Step 2: Get branch and topic
     if [ "$QUICK_MODE" = true ]; then
-        # Quick mode: use current branch
+        # Quick mode: topic only, auto-generate branch from current HEAD
         local current_branch
         current_branch=$(get_current_branch)
 
@@ -53,32 +56,18 @@ main() {
             exit 1
         fi
 
-        # Check if current branch is already checked out in a worktree
-        cd "$repo_path" || exit 1
-        if git worktree list | grep -q "\[$current_branch\]"; then
-            log_warn "Branch '$current_branch' is already checked out"
-            log_info "Quick mode will create a new branch based on '$current_branch'"
-            echo ""
+        # Prompt for topic only
+        topic=$(prompt "Topic (branch wt/<topic> from $current_branch)")
 
-            # Prompt for new branch name
-            local new_branch
-            new_branch=$(prompt "New branch name (based on $current_branch)")
-
-            if [ -z "$new_branch" ]; then
-                log_error "Branch name required"
-                echo ""
-                echo "Press Enter to close..."
-                read -r
-                exit 1
-            fi
-
-            branch_name="$new_branch"
-            is_new_branch=true
-            log_info "Will create new branch: $branch_name (from $current_branch)"
-        else
-            branch_name="$current_branch"
-            log_info "Creating worktree from current branch: $branch_name"
+        if [ -z "$topic" ]; then
+            log_error "Topic required"
+            exit 1
         fi
+
+        topic=$(sanitize_name "$topic")
+        branch_name="wt/$topic"
+        is_new_branch=true
+        log_info "Creating worktree: branch $branch_name from $current_branch"
     else
         # Full mode: interactive branch selection with arrow navigation
         echo "=== Create Worktree Session ==="
@@ -90,9 +79,6 @@ main() {
         # Check if user cancelled (select_branch returns non-zero)
         if [ $? -ne 0 ] || [ -z "$branch_name" ]; then
             log_error "No branch selected"
-            echo ""
-            echo "Press Enter to close..."
-            read -r
             exit 1
         fi
 
@@ -108,24 +94,19 @@ main() {
                 exit 0
             fi
         fi
+
+        # Get topic/description
+        topic=$(prompt "Topic/description")
+
+        if [ -z "$topic" ]; then
+            log_error "Topic required"
+            exit 1
+        fi
+
+        topic=$(sanitize_name "$topic")
     fi
 
-    # Step 3: Get topic/description
-    topic=$(prompt "Topic/description")
-
-    if [ -z "$topic" ]; then
-        log_error "Topic required"
-        echo ""
-        echo "Press Enter to close..."
-        read -r
-        exit 1
-    fi
-
-    log_info "Topic entered: $topic"
-
-    # Sanitize topic for use in paths
-    topic=$(sanitize_name "$topic")
-    log_info "Sanitized topic: $topic"
+    log_info "Topic: $topic"
 
     # Step 4: Generate session name
     session_name=$(generate_session_name "$repo_name" "$topic")
@@ -229,47 +210,35 @@ create_session_and_metadata() {
     # Determine if we should launch agent
     local auto_agent="${WORKTREE_AUTO_AGENT:-on}"
     local launch_agent=false
+    local agent_cmd=""
 
     case "$auto_agent" in
-        on)
-            launch_agent=true
+        on|prompt)
+            # Show fzf agent picker
+            if agent_cmd=$(select_agent) && [ -n "$agent_cmd" ]; then
+                launch_agent=true
+            else
+                launch_agent=false
+                agent_cmd=""
+            fi
             ;;
         off)
             launch_agent=false
-            ;;
-        prompt)
-            if confirm "Launch agent (${WORKTREE_AGENT_CMD:-claude})?"; then
-                launch_agent=true
-            fi
+            agent_cmd=""
             ;;
     esac
 
-    # Check if agent command exists
-    local agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
-    local agent_available=false
-
-    if command_exists "${agent_cmd%% *}"; then
-        agent_available=true
-    else
-        log_warn "Agent command '$agent_cmd' not found"
-
-        if [ "$auto_agent" = "prompt" ]; then
-            if ! confirm "Create session without agent?"; then
-                log_info "Cancelled"
-                exit 0
-            fi
-        fi
-
-        launch_agent=false
-    fi
-
     # Create tmux session
     log_info "Creating tmux session: $session_name"
-    create_tmux_session "$session_name" "$worktree_path" "$launch_agent"
+    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd"
 
     # Save metadata
+    local agent_available=false
+    if [ -n "$agent_cmd" ]; then
+        agent_available=true
+    fi
     save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
-        "$worktree_path" "$repo_path" "$agent_available" ""
+        "$worktree_path" "$repo_path" "$agent_available" "" "$agent_cmd"
 
     log_success "Session created: $session_name"
 
@@ -277,10 +246,5 @@ create_session_and_metadata() {
     switch_to_session "$session_name"
 }
 
-# Run main with error handling
-if ! main "$@"; then
-    echo ""
-    echo "Press Enter to close..."
-    read -r
-    exit 1
-fi
+# Run main
+main "$@"

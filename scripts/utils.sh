@@ -35,6 +35,34 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Find agent PID in pane's process tree
+# Handles native binaries (bash → claude) and node/bun-wrapped agents (bash → node → codex)
+find_agent_pid() {
+    local pane_pid="$1"
+    local agent_process="$2"
+    local pid
+
+    # Direct child (native binaries like claude)
+    pid=$(pgrep -P "$pane_pid" -x "$agent_process" 2>/dev/null | head -1)
+    if [ -n "$pid" ]; then
+        echo "$pid"
+        return 0
+    fi
+
+    # Grandchild (node/bun-wrapped agents like codex, gemini)
+    local child_pids
+    child_pids=$(pgrep -P "$pane_pid" 2>/dev/null)
+    for cpid in $child_pids; do
+        pid=$(pgrep -P "$cpid" -x "$agent_process" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            echo "$pid"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Check required dependencies
 check_dependencies() {
     local missing=()
@@ -245,6 +273,66 @@ select_branch() {
     fi
 }
 
+# Select agent with fzf picker
+select_agent() {
+    local agent_list="${WORKTREE_AGENT_LIST:-claude}"
+    local default_agent="${WORKTREE_AGENT_CMD:-claude}"
+
+    # Parse comma-separated list into array
+    local agents=()
+    IFS=',' read -ra agents <<< "$agent_list"
+
+    # Filter to only installed agents
+    local available=()
+    for agent in "${agents[@]}"; do
+        agent=$(echo "$agent" | xargs)  # trim whitespace
+        if command_exists "$agent"; then
+            available+=("$agent")
+        fi
+    done
+
+    # No agents available
+    if [ ${#available[@]} -eq 0 ]; then
+        log_warn "No agents from list are installed"
+        return 1
+    fi
+
+    # Single agent — auto-select, skip fzf
+    if [ ${#available[@]} -eq 1 ]; then
+        echo "${available[0]}"
+        return 0
+    fi
+
+    # Build display list with default tag
+    local display_list=""
+    for agent in "${available[@]}"; do
+        if [ "$agent" = "$default_agent" ]; then
+            display_list+="${agent} (default)"$'\n'
+        else
+            display_list+="${agent}"$'\n'
+        fi
+    done
+    # Remove trailing newline
+    display_list="${display_list%$'\n'}"
+
+    # Use fzf to pick
+    local selected
+    selected=$(echo "$display_list" | fzf \
+        --ansi \
+        --header="Select agent | Enter: Select | Esc: Cancel" \
+        --layout=reverse \
+        --height=~10 \
+        --no-info \
+        --bind='esc:cancel')
+
+    if [ -z "$selected" ]; then
+        return 1
+    fi
+
+    # Strip "(default)" tag if present
+    echo "$selected" | awk '{print $1}'
+}
+
 # Expand tilde in path
 expand_tilde() {
     local path="$1"
@@ -266,13 +354,13 @@ create_tmux_session() {
     local session_name="$1"
     local worktree_path="$2"
     local launch_agent="${3:-true}"
+    local agent_cmd="${4:-}"
 
     # Create detached session
     tmux new-session -d -s "$session_name" -c "$worktree_path"
 
     # Launch agent if requested
-    if [ "$launch_agent" = "true" ]; then
-        local agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+    if [ "$launch_agent" = "true" ] && [ -n "$agent_cmd" ]; then
         if command_exists "${agent_cmd%% *}"; then
             tmux send-keys -t "$session_name" "$agent_cmd" C-m
         else

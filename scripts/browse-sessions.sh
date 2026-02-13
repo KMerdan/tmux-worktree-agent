@@ -31,18 +31,22 @@ generate_preview() {
     fi
 
     # Extract fields
-    local repo branch worktree_path created_at description
+    local repo branch worktree_path created_at description agent_cmd
     repo=$(echo "$session_data" | jq -r '.repo')
     branch=$(echo "$session_data" | jq -r '.branch')
     worktree_path=$(echo "$session_data" | jq -r '.worktree_path')
     created_at=$(echo "$session_data" | jq -r '.created_at')
     description=$(echo "$session_data" | jq -r '.description // empty')
+    agent_cmd=$(echo "$session_data" | jq -r '.agent_cmd // empty')
 
     # Display session info
     echo "╭─ Session Info ────────────────────────────╮"
     echo "│ Session: $session_name"
     echo "│ Repo:    $repo"
     echo "│ Branch:  $branch"
+    if [ -n "$agent_cmd" ]; then
+        echo "│ Agent:   $agent_cmd"
+    fi
     echo "│ Created: $created_at"
 
     if [ -n "$description" ]; then
@@ -102,20 +106,23 @@ get_agent_status() {
         return
     fi
 
-    # Get agent command from environment
-    local agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+    # Get agent command from session metadata, fallback to env
+    local agent_cmd
+    agent_cmd=$(get_session_agent "$session_name")
+    if [ -z "$agent_cmd" ]; then
+        agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+    fi
     local agent_process="${agent_cmd%% *}"  # First word only
 
-    # Find agent process in session
+    # Find agent process in session's process tree
     local pane_pid=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" | head -1)
 
-    # Validate pane_pid before using in pgrep
     if [ -z "$pane_pid" ]; then
         echo "◌"  # No pane found
         return
     fi
 
-    local agent_pid=$(pgrep -P "$pane_pid" "$agent_process" 2>/dev/null)
+    local agent_pid=$(find_agent_pid "$pane_pid" "$agent_process")
 
     if [ -z "$agent_pid" ]; then
         echo "◌"  # No agent process
@@ -198,11 +205,19 @@ build_session_list() {
             agent_status=$(get_agent_status "$session")
         fi
 
-        # Format: session_status agent_status session branch path
-        printf "%-2s %-2s %-30s %-25s %s\n" \
+        # Get agent name from metadata
+        local agent_name
+        agent_name=$(echo "$session_data" | jq -r '.agent_cmd // empty')
+        if [ -z "$agent_name" ]; then
+            agent_name="─"
+        fi
+
+        # Format: session_status agent_status session agent branch path
+        printf "%-2s %-2s %-35s %-10s %-25s %s\n" \
             "$status_icon" \
             "$agent_status" \
             "$session" \
+            "$agent_name" \
             "$branch" \
             "$worktree_path"
     done
@@ -232,7 +247,7 @@ main() {
     local selected
     selected=$(echo "$session_list" | fzf \
         --ansi \
-        --header="Worktree Sessions ($(count_sessions) active) | [S][A] Session+Agent Status | Enter: switch | Ctrl-d: delete | Tab: preview" \
+        --header="Worktree Sessions ($(count_sessions) active) | [S][A] Session Agent Branch | Enter: switch | Ctrl-d: delete | Tab: preview" \
         --header-lines=0 \
         --layout=reverse \
         --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {3}'" \
@@ -265,15 +280,15 @@ main() {
             if confirm "Create session for existing worktree?"; then
                 local worktree_path
                 worktree_path=$(get_session_field "$session_name" "worktree_path")
-                local repo
-                repo=$(get_session_field "$session_name" "repo")
-                local branch
-                branch=$(get_session_field "$session_name" "branch")
-                local topic
-                topic=$(get_session_field "$session_name" "topic")
+                local stored_agent
+                stored_agent=$(get_session_agent "$session_name")
 
-                # Create session
-                create_tmux_session "$session_name" "$worktree_path" true
+                # Create session with stored agent
+                if [ -n "$stored_agent" ]; then
+                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent"
+                else
+                    create_tmux_session "$session_name" "$worktree_path" false ""
+                fi
 
                 log_success "Session created: $session_name"
                 switch_to_session "$session_name"
