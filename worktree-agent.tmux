@@ -14,6 +14,8 @@ default_kill_key="K"
 default_refresh_key="R"
 default_helper_key="?"
 default_description_key="D"
+default_cleanup_key="C"
+default_ops_key="O"
 
 # Get tmux options with defaults
 get_tmux_option() {
@@ -46,6 +48,8 @@ kill_key=$(get_tmux_option "@worktree-kill-key" "$default_kill_key")
 refresh_key=$(get_tmux_option "@worktree-refresh-key" "$default_refresh_key")
 helper_key=$(get_tmux_option "@worktree-helper-key" "$default_helper_key")
 description_key=$(get_tmux_option "@worktree-description-key" "$default_description_key")
+cleanup_key=$(get_tmux_option "@worktree-cleanup-key" "$default_cleanup_key")
+ops_key=$(get_tmux_option "@worktree-ops-key" "$default_ops_key")
 
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
@@ -54,14 +58,16 @@ tmux set-environment -g WORKTREE_AGENT_LIST "$agent_list"
 tmux set-environment -g WORKTREE_AUTO_AGENT "$auto_agent"
 tmux set-environment -g WORKTREE_PLUGIN_DIR "$CURRENT_DIR"
 
-# Set up keybindings
-tmux bind-key "$browser_key" display-popup -E -w 90% -h 90% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/browse-sessions.sh"
-tmux bind-key "$create_key" display-popup -E -w 80% -h 80% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh"
-tmux bind-key "$quick_create_key" display-popup -E -w 80% -h 80% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh --quick"
-tmux bind-key "$kill_key" display-popup -E -w 80% -h 80% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/kill-worktree.sh"
+# Set up keybindings (using larger popups for better visibility)
+tmux bind-key "$browser_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/browse-sessions.sh"
+tmux bind-key "$create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh"
+tmux bind-key "$quick_create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh --quick"
+tmux bind-key "$kill_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/kill-worktree.sh"
 tmux bind-key "$refresh_key" run-shell "$CURRENT_DIR/scripts/reconcile.sh"
-tmux bind-key "$helper_key" display-popup -E -w 70% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/show-helper.sh"
-tmux bind-key "$description_key" display-popup -E -w 80% -h 80% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
+tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/show-helper-interactive.sh"
+tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
+tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/cleanup-agents.sh"
+tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"

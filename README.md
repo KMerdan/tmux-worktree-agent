@@ -117,6 +117,11 @@ Example banner:
    - Scans for orphaned sessions/worktrees
    - Shows summary and fix options
 
+6. **Interactive help with quick commands**: `prefix + ?`
+   - Shows all keybindings and tips
+   - Press keys to execute git commands instantly
+   - No need to type commands manually
+
 ### Workflows
 
 #### Starting a New Feature
@@ -163,10 +168,29 @@ prefix + w
 # Type to fuzzy search, Enter to switch
 ```
 
+#### Using Interactive Helper
+
+```bash
+prefix + ?
+
+# Interactive helper appears with git commands:
+# Git Quick Actions (press key to execute):
+#   s) git status
+#   w) git worktree list
+#   b) git branch
+#   l) git log --oneline -10
+#   d) git diff
+#   a) git add -A
+#   f) git fetch --all
+
+# Just press 's' to run git status instantly!
+# Press 'q' to quit
+```
+
 #### Cleaning Up
 
 ```bash
-# From within a worktree session
+# Clean up current worktree session
 prefix + K
 
 # Confirms, then:
@@ -174,6 +198,15 @@ prefix + K
 # - Removes git worktree
 # - Cleans metadata
 # - Switches to another session
+
+# Clean up old agent processes
+prefix + C
+
+# Interactive cleanup tool:
+# - Shows old Claude processes (>1 day)
+# - Lists orphaned zsh processes
+# - Safe cleanup with confirmation
+# - Multiple cleanup options available
 ```
 
 ### Browser Interface
@@ -234,6 +267,8 @@ The plugin automatically handles orphaned states:
 | `prefix + K` | Kill current worktree + session |
 | `prefix + R` | Reconcile/refresh metadata |
 | `prefix + D` | Edit session description |
+| `prefix + C` | Clean up old agent processes |
+| `prefix + O` | Window/pane ops popup |
 | `prefix + ?` | Show help/keybindings |
 
 ### Custom Keybindings
@@ -246,6 +281,8 @@ set -g @worktree-quick-create-key 'W'
 set -g @worktree-kill-key 'K'
 set -g @worktree-refresh-key 'R'
 set -g @worktree-description-key 'D'
+set -g @worktree-cleanup-key 'C'
+set -g @worktree-ops-key 'O'
 set -g @worktree-helper-key '?'
 ```
 
@@ -368,6 +405,29 @@ Topic: spike
 # Work manually or launch agent later
 ```
 
+## Scrolling in Popups
+
+Popup windows now support scrolling for better visibility:
+
+### Automatic Scrolling (Less Pager)
+Most popups use `less` for automatic scrolling:
+- **↑/↓ or j/k**: Scroll line by line
+- **Space/b**: Page down/up
+- **Mouse wheel**: Scroll (if mouse enabled)
+- **q**: Exit
+
+### Tmux Copy Mode
+For any popup, use tmux's copy mode:
+- **Ctrl-b [**: Enter copy mode (use your prefix)
+- **↑/↓ arrows**: Scroll
+- **Page Up/Down**: Scroll by page
+- **q**: Exit copy mode
+
+### Popup Sizes
+All popups now use larger sizes (85-95%) for maximum visibility.
+
+See [docs/SCROLLING.md](docs/SCROLLING.md) for detailed scrolling guide.
+
 ## Troubleshooting
 
 ### Agent command not found
@@ -448,6 +508,7 @@ tmux-worktree-agent/
 │   ├── session-description.sh   # Manage session descriptions
 │   ├── shell-init.sh            # Shell integration for banners
 │   ├── reconcile.sh             # Fix orphaned states
+│   ├── window-pane-ops.sh       # Window/pane operations popup
 │   └── utils.sh                 # Shared utilities
 ├── lib/
 │   └── metadata.sh              # JSON metadata manager

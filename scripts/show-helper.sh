@@ -74,6 +74,8 @@ show_main_shortcuts() {
     echo -e "  ${CYAN}C-a D${NC}      Edit session description (for AI agent context)"
     echo -e "  ${CYAN}C-a K${NC}      Kill current worktree + session"
     echo -e "  ${CYAN}C-a R${NC}      Reconcile/refresh metadata"
+    echo -e "  ${CYAN}C-a C${NC}      Clean up old agent processes"
+    echo -e "  ${CYAN}C-a O${NC}      Window/pane operations popup"
     echo ""
 }
 
@@ -171,6 +173,9 @@ main() {
     echo -e "${BOLD}${MAGENTA}║${NC}     ${BOLD}Context-Aware Helper${NC}                                  ${BOLD}${MAGENTA}║${NC}"
     echo -e "${BOLD}${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
+    echo -e "${DIM}💡 Tip: Use ${YELLOW}↑/↓${DIM} arrows or ${YELLOW}mouse wheel${DIM} to scroll if using less${NC}"
+    echo -e "${DIM}    Or press ${YELLOW}Ctrl-b [${DIM} for tmux copy-mode (q to exit)${NC}"
+    echo ""
 
     # Show current session info if applicable
     get_session_info
@@ -219,10 +224,20 @@ main() {
 
     # Footer
     echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${DIM}Press any key to close...${NC}"
-
-    # Wait for keypress
-    read -n 1 -s
+    echo ""
 }
 
-main
+# Run with pager for scrollability
+if command -v less >/dev/null 2>&1; then
+    main | less -R -X -F \
+        --mouse \
+        --wheel-lines=3 \
+        --no-init \
+        --quit-if-one-screen \
+        -PM"Help (Use arrow keys or mouse to scroll, q to quit) %pB\%"
+else
+    main
+    echo ""
+    echo -e "${DIM}Press any key to close...${NC}"
+    read -n 1 -s
+fi
