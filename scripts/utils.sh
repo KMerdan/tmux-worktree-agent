@@ -355,9 +355,15 @@ create_tmux_session() {
     local worktree_path="$2"
     local launch_agent="${3:-true}"
     local agent_cmd="${4:-}"
+    local topic="${5:-}"
 
     # Create detached session
     tmux new-session -d -s "$session_name" -c "$worktree_path"
+
+    # Set window name to topic if provided
+    if [ -n "$topic" ]; then
+        tmux rename-window -t "$session_name:0" "$topic"
+    fi
 
     # Launch agent if requested
     if [ "$launch_agent" = "true" ] && [ -n "$agent_cmd" ]; then

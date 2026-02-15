@@ -284,12 +284,14 @@ main() {
                 worktree_path=$(get_session_field "$session_name" "worktree_path")
                 local stored_agent
                 stored_agent=$(get_session_agent "$session_name")
+                local topic
+                topic=$(get_session_field "$session_name" "topic")
 
                 # Create session with stored agent
                 if [ -n "$stored_agent" ]; then
-                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent"
+                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent" "$topic"
                 else
-                    create_tmux_session "$session_name" "$worktree_path" false ""
+                    create_tmux_session "$session_name" "$worktree_path" false "" "$topic"
                 fi
 
                 log_success "Session created: $session_name"

@@ -230,7 +230,7 @@ create_session_and_metadata() {
 
     # Create tmux session
     log_info "Creating tmux session: $session_name"
-    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd"
+    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic"
 
     # Save metadata
     local agent_available=false
