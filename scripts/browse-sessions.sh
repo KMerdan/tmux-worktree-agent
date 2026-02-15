@@ -240,6 +240,8 @@ main() {
     if [ $? -ne 0 ]; then
         log_warn "No worktree sessions found"
         log_info "Create one with: prefix + C-w"
+        echo ""
+        read -n 1 -s -r -p "Press any key to close..." < /dev/tty
         exit 0
     fi
 
