@@ -144,6 +144,10 @@ main() {
     else
         log_info "Open browser (prefix + w) to manage orphaned sessions"
     fi
+
+    # Pause so user can see the message
+    echo ""
+    read -n 1 -s -r -p "Press any key to close..."
 }
 
 # Run main in tmux popup if available
