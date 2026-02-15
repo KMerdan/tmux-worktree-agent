@@ -63,7 +63,7 @@ tmux bind-key "$browser_key" display-popup -E -w 95% -h 95% -d "#{pane_current_p
 tmux bind-key "$create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh"
 tmux bind-key "$quick_create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh --quick"
 tmux bind-key "$kill_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/kill-worktree.sh"
-tmux bind-key "$refresh_key" run-shell "$CURRENT_DIR/scripts/reconcile.sh"
+tmux bind-key "$refresh_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/reconcile.sh"
 tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/show-helper-fzf.sh"
 tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
 tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/cleanup-agents.sh"

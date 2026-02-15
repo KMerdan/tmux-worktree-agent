@@ -18,6 +18,10 @@ fi
 
 # Main reconciliation
 main() {
+    # Debug: log to file
+    exec 2>> /tmp/reconcile-debug.log
+    set -x
+
     log_info "Reconciling worktree sessions..."
     echo ""
 
