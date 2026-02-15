@@ -147,7 +147,7 @@ main() {
 
     # Pause so user can see the message
     echo ""
-    read -n 1 -s -r -p "Press any key to close..."
+    read -n 1 -s -r -p "Press any key to close..." < /dev/tty
 }
 
 # Run main in tmux popup if available
