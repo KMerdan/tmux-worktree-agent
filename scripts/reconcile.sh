@@ -154,9 +154,5 @@ main() {
     read -n 1 -s -r -p "Press any key to close..." < /dev/tty
 }
 
-# Run main in tmux popup if available
-if [ -n "$TMUX" ]; then
-    display_in_tmux "bash $0"
-else
-    main
-fi
+# Run main directly (popup handled by keybinding)
+main
