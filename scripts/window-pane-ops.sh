@@ -31,9 +31,9 @@ choose_action() {
 }
 
 build_window_list() {
-    tmux list-windows -t "$current_session" \
-        -F "#{window_id}|#{window_active}|#{window_index}|#{window_name}|#{window_panes}|#{pane_id}|#{pane_current_command}|#{pane_current_path}" | \
-        while IFS='|' read -r window_id window_active window_index window_name window_panes pane_id pane_cmd pane_path; do
+    tmux list-windows -a \
+        -F "#{session_name}|#{window_id}|#{window_active}|#{window_index}|#{window_name}|#{window_panes}|#{pane_id}|#{pane_current_command}|#{pane_current_path}" | \
+        while IFS='|' read -r session_name window_id window_active window_index window_name window_panes pane_id pane_cmd pane_path; do
             [ -n "$window_id" ] || continue
 
             local active_mark path_label
@@ -46,11 +46,11 @@ build_window_list() {
             # Fields:
             # 1 window_id (hidden)
             # 2 active_pane_id (hidden)
-            # 3 display title
+            # 3 display title (with session name)
             # 4 display cmd
             # 5 display path
-            printf "%s|%s|[%s]%s %s (%s panes)|cmd:%s|path:%s\n" \
-                "$window_id" "$pane_id" "$window_index" "$active_mark" "$window_name" "$window_panes" "$pane_cmd" "$path_label"
+            printf "%s|%s|%s:[%s]%s %s (%s panes)|cmd:%s|path:%s\n" \
+                "$window_id" "$pane_id" "$session_name" "$window_index" "$active_mark" "$window_name" "$window_panes" "$pane_cmd" "$path_label"
         done
 }
 
