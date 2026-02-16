@@ -71,6 +71,7 @@ generate_command_list() {
     echo "ref|📖 Split pane vertically|C-a -|Creates top-bottom panes (horizontal divider)"
     echo "ref|📖 Navigate between panes|C-a h/j/k/l|Vim-style: left/down/up/right pane navigation"
     echo "ref|📖 Zoom/unzoom pane|C-r|Toggles current pane fullscreen mode"
+    echo "ref|📖 Copy mode: open in vim|C-a [ → v → C-o|Select filepath and open in vim split, or C-o without selection opens current dir"
 }
 
 # Generate preview based on type
