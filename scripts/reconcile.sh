@@ -107,9 +107,7 @@ main() {
         echo "│ ✗ $stale_count stale metadata cleaned"
     fi
 
-    echo "│"
-    echo "╰───────────────────────────────────────────╯"
-    echo ""
+    # (summary box continued after branch scan below)
 
     # Show details of orphaned sessions
     if [ ${#orphaned_sessions[@]} -gt 0 ]; then
@@ -138,8 +136,86 @@ main() {
         echo ""
     fi
 
+    # Step 3: Scan for orphaned wt/ branches
+    local orphaned_branches=()
+    local orphaned_branch_count=0
+
+    # Find all repos that have metadata entries
+    local repos=()
+    for session in $sessions; do
+        local repo_path
+        repo_path=$(get_session_field "$session" "main_repo_path")
+        if [ -n "$repo_path" ] && [ -d "$repo_path" ]; then
+            # Deduplicate
+            local dup=false
+            for r in "${repos[@]+"${repos[@]}"}"; do
+                [ "$r" = "$repo_path" ] && dup=true
+            done
+            $dup || repos+=("$repo_path")
+        fi
+    done
+
+    for repo_path in "${repos[@]+"${repos[@]}"}"; do
+        cd "$repo_path" 2>/dev/null || continue
+        # List all wt/ branches
+        while IFS= read -r wt_branch; do
+            [ -n "$wt_branch" ] || continue
+            wt_branch=$(echo "$wt_branch" | sed 's/^[* ] //')
+            # Check if any metadata entry uses this branch
+            local branch_in_use=false
+            for session in $sessions; do
+                local session_branch
+                session_branch=$(get_session_field "$session" "branch")
+                if [ "$session_branch" = "$wt_branch" ]; then
+                    branch_in_use=true
+                    break
+                fi
+            done
+            if ! $branch_in_use; then
+                orphaned_branches+=("$repo_path:$wt_branch")
+                ((orphaned_branch_count++))
+            fi
+        done < <(git branch --list 'wt/*' 2>/dev/null)
+    done
+
+    # Update summary with branch info
+    if [ $orphaned_branch_count -gt 0 ]; then
+        echo "│ ⚠ $orphaned_branch_count orphaned wt/ branches"
+    fi
+
+    echo "│"
+    echo "╰───────────────────────────────────────────╯"
+    echo ""
+
+    # Show and handle orphaned branches
+    if [ ${#orphaned_branches[@]} -gt 0 ]; then
+        echo "Orphaned wt/ Branches (no matching session):"
+        for entry in "${orphaned_branches[@]}"; do
+            local repo="${entry%%:*}"
+            local br="${entry#*:}"
+            echo "  ⚠ $br (in $(basename "$repo"))"
+        done
+        echo ""
+
+        if confirm "Delete all orphaned wt/ branches?"; then
+            for entry in "${orphaned_branches[@]}"; do
+                local repo="${entry%%:*}"
+                local br="${entry#*:}"
+                cd "$repo" 2>/dev/null || continue
+                if git branch -d "$br" 2>/dev/null; then
+                    log_success "Deleted $br"
+                elif git branch -D "$br" 2>/dev/null; then
+                    log_success "Force-deleted $br (had unmerged changes)"
+                else
+                    log_warn "Could not delete $br"
+                fi
+            done
+        fi
+        echo ""
+    fi
+
     # Summary message
-    if [ $orphaned_session_count -eq 0 ] && [ $orphaned_worktree_count -eq 0 ] && [ $stale_count -eq 0 ]; then
+    if [ $orphaned_session_count -eq 0 ] && [ $orphaned_worktree_count -eq 0 ] && [ $stale_count -eq 0 ] && [ $orphaned_branch_count -eq 0 ]; then
         log_success "All sessions are in sync!"
     else
         log_info "Open browser (prefix + w) to manage orphaned sessions"

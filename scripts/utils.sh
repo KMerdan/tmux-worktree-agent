@@ -349,6 +349,40 @@ get_worktree_path() {
     echo "$base_path/$repo/$topic"
 }
 
+# Generate window name as "agent:topic" from session metadata
+# Usage: generate_window_name [session_name] [agent_override]
+# Falls back to topic only, or "shell" if no metadata
+generate_window_name() {
+    local session_name="${1:-$(tmux display-message -p '#{session_name}')}"
+    local agent_override="$2"
+
+    local topic agent_label
+    if session_in_metadata "$session_name"; then
+        topic=$(get_session_field "$session_name" "topic")
+        if [ -n "$agent_override" ]; then
+            agent_label="${agent_override%% *}"
+        else
+            agent_label=$(get_session_field "$session_name" "agent_cmd")
+            agent_label="${agent_label%% *}"
+        fi
+        agent_label="${agent_label:-sh}"
+        echo "${agent_label}:${topic}"
+    else
+        echo "shell"
+    fi
+}
+
+# Rename a window using session metadata
+# Usage: rename_window_from_metadata <window_target> [agent_override]
+rename_window_from_metadata() {
+    local window_target="$1"
+    local agent_override="$2"
+    local session_name="${window_target%%:*}"
+    local name
+    name=$(generate_window_name "$session_name" "$agent_override")
+    tmux rename-window -t "$window_target" "$name"
+}
+
 # Create tmux session
 create_tmux_session() {
     local session_name="$1"
@@ -360,9 +394,9 @@ create_tmux_session() {
     # Create detached session
     tmux new-session -d -s "$session_name" -c "$worktree_path"
 
-    # Set window name to topic if provided
+    # Set window name to agent:topic (e.g. codex:re_ai)
     if [ -n "$topic" ]; then
-        tmux rename-window -t "$session_name:0" "$topic"
+        rename_window_from_metadata "$session_name:0" "$agent_cmd"
     fi
 
     # Launch agent if requested

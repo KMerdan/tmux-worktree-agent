@@ -171,24 +171,22 @@ main() {
     cd "$repo_path"
 
     if [ "$is_new_branch" = true ]; then
+        # Typed new branch name → create from current HEAD
         if ! git worktree add "$worktree_path" -b "$branch_name"; then
             log_error "Failed to create worktree with new branch '$branch_name'"
             log_info "Git error shown above"
             exit 1
         fi
     else
-        # Check if branch is already checked out in another worktree
-        if git worktree list | grep -q "$branch_name"; then
-            log_error "Branch '$branch_name' is already checked out in another worktree"
-            log_info "Hint: Use a different branch or topic name"
-            exit 1
-        fi
-
-        if ! git worktree add "$worktree_path" "$branch_name"; then
-            log_error "Failed to create worktree for branch '$branch_name'"
+        # Selected existing branch → create wt/<topic> branching FROM it
+        local new_branch="wt/$topic"
+        log_info "Creating branch '$new_branch' from '$branch_name'"
+        if ! git worktree add "$worktree_path" -b "$new_branch" "$branch_name"; then
+            log_error "Failed to create worktree with branch '$new_branch' from '$branch_name'"
             log_info "Git error shown above"
             exit 1
         fi
+        branch_name="$new_branch"
     fi
 
     log_success "Worktree created"

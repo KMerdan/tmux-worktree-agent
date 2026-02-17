@@ -53,6 +53,9 @@ main() {
     echo "│ Branch:  $branch"
     echo "│ Topic:   $topic"
     echo "│ Path:    $worktree_path"
+    if [[ "$branch" == wt/* ]]; then
+        echo "│ Branch $branch will also be deleted"
+    fi
     echo "╰───────────────────────────────────────────╯"
     echo ""
 
@@ -115,12 +118,25 @@ main() {
         log_warn "Worktree directory not found (already deleted)"
     fi
 
-    # Step 3: Delete metadata
+    # Step 3: Delete wt/ branch if applicable
+    if [ -n "$branch" ] && [[ "$branch" == wt/* ]] && [ -d "$main_repo_path" ]; then
+        log_info "Deleting branch '$branch'..."
+        cd "$main_repo_path"
+        if git branch -d "$branch" 2>/dev/null; then
+            log_success "Branch deleted"
+        elif git branch -D "$branch" 2>/dev/null; then
+            log_success "Branch force-deleted (had unmerged changes)"
+        else
+            log_warn "Could not delete branch '$branch'"
+        fi
+    fi
+
+    # Step 4: Delete metadata
     log_info "Cleaning metadata..."
     delete_session "$session_name"
     log_success "Metadata cleaned"
 
-    # Step 4: Switch to previous session if needed
+    # Step 5: Switch to previous session if needed
     if [ -n "$previous_session" ]; then
         log_info "Switching to session: $previous_session"
         switch_to_session "$previous_session"

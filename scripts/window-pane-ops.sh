@@ -4,7 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
+source "$PLUGIN_DIR/lib/metadata.sh"
 
 if ! command_exists tmux; then
     log_error "tmux is required"
@@ -138,12 +140,14 @@ combine_windows_into_target() {
     done <<< "$source_windows"
 
     tmux select-layout -t "$target_window" tiled >/dev/null 2>&1 || true
+    tmux select-window -t "$target_window" >/dev/null 2>&1 || true
+
+    # Update window name to reflect combined content
+    rename_window_from_metadata "$target_window" "" 2>/dev/null || true
 
     if [ "$failed_count" -gt 0 ]; then
-        tmux select-window -t "$target_window" >/dev/null 2>&1 || true
         tmux display-message -d 8000 "Merged $moved_count pane(s), failed $failed_count (${first_error})"
     else
-        tmux select-window -t "$target_window" >/dev/null 2>&1 || true
         tmux display-message -d 5000 "Merged $moved_count pane(s) into target window"
     fi
 }
@@ -212,7 +216,16 @@ decompose_selected_panes() {
 
     while IFS= read -r pane_id; do
         [ -n "$pane_id" ] || continue
+        # Detect what's running in this pane before breaking
+        local pane_cmd
+        pane_cmd=$(tmux display-message -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null) || true
         tmux break-pane -d -s "$pane_id"
+        # Name the new window using session metadata + detected command as agent hint
+        local new_window_id
+        new_window_id=$(tmux display-message -t "$pane_id" -p '#{window_id}' 2>/dev/null) || true
+        if [ -n "$new_window_id" ]; then
+            rename_window_from_metadata "$new_window_id" "$pane_cmd" 2>/dev/null || true
+        fi
         broken_count=$((broken_count + 1))
     done <<< "$unique_panes"
 
