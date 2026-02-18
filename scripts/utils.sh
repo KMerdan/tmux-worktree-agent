@@ -349,16 +349,16 @@ get_worktree_path() {
     echo "$base_path/$repo/$topic"
 }
 
-# Generate window name as "agent:topic" from session metadata
+# Generate window name as "agent:branch" from session metadata
 # Usage: generate_window_name [session_name] [agent_override]
-# Falls back to topic only, or "shell" if no metadata
+# Falls back to "shell" if no metadata
 generate_window_name() {
     local session_name="${1:-$(tmux display-message -p '#{session_name}')}"
     local agent_override="$2"
 
-    local topic agent_label
+    local branch agent_label
     if session_in_metadata "$session_name"; then
-        topic=$(get_session_field "$session_name" "topic")
+        branch=$(get_session_field "$session_name" "branch")
         if [ -n "$agent_override" ]; then
             agent_label="${agent_override%% *}"
         else
@@ -366,7 +366,7 @@ generate_window_name() {
             agent_label="${agent_label%% *}"
         fi
         agent_label="${agent_label:-sh}"
-        echo "${agent_label}:${topic}"
+        echo "${agent_label}:${branch}"
     else
         echo "shell"
     fi

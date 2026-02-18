@@ -43,9 +43,9 @@ main() {
         [ -n "$session_name" ] || continue
         tmux has-session -t "$session_name" 2>/dev/null || continue
 
-        local topic
-        topic=$(get_session_field "$session_name" "topic" 2>/dev/null) || continue
-        [ -n "$topic" ] || continue
+        local branch
+        branch=$(get_session_field "$session_name" "branch" 2>/dev/null) || continue
+        [ -n "$branch" ] || continue
 
         while IFS='|' read -r window_id window_index; do
             [ -n "$window_id" ] || continue
@@ -78,7 +78,7 @@ main() {
             else
                 agent_part=$(IFS='+'; echo "${agents[*]}")
             fi
-            local new_name="${agent_part}:${topic}"
+            local new_name="${agent_part}:${branch}"
 
             # Only rename if different (avoid flicker)
             local current_name
