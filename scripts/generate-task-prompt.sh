@@ -85,7 +85,7 @@ Rules:
 2. Every task block MUST have `**Title**:` on its own line — the parser requires this
 3. Tasks MUST be separated by `---` (horizontal rule on its own line)
 4. The preamble (before first `---`) is shared context — make it rich and complete
-5. Task IDs: short, descriptive kebab-case (e.g., TASK-auth, TASK-ocr, TASK-api-routes)
+5. Task IDs: short, descriptive kebab-case (e.g., TASK-auth, TASK-ocr, TASK-api-routes). Each task will be spawned on a `wt/<sanitized-task-id>` branch in its own worktree
 6. **Scoped Files** is critical: each task MUST list exactly which files it will touch. Two tasks MUST NOT have overlapping scoped files — this prevents merge conflicts across worktrees
 7. **Shared Interfaces**: when tasks need to coordinate (e.g., one creates a type another imports), define the contract explicitly so both agents agree on the shape
 8. **Out of Scope**: explicitly prevent agents from drifting into other tasks'\'' territory

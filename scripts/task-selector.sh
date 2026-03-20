@@ -195,7 +195,7 @@ spawn_task_worktrees() {
         local sanitized_id
         sanitized_id=$(sanitize_name "$task_id")
 
-        local branch_name="work/wt/task/${sanitized_id}"
+        local branch_name="wt/${sanitized_id}"
         local topic="${sanitized_id}"
         local session_name
         session_name=$(generate_session_name "$repo_name" "$topic")

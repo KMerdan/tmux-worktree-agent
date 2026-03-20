@@ -475,10 +475,22 @@ create_worktree_for_branch() {
 
     cd "$repo_path" || return 1
 
+    # Clean up stale worktree references (e.g. directory was deleted without git worktree remove)
+    git worktree prune 2>/dev/null
+
     if [ "$is_new_branch" = "true" ]; then
-        if ! git worktree add "$worktree_path" -b "$branch_name" 2>&1; then
-            log_error "Failed to create worktree with new branch '$branch_name'"
-            return 1
+        # Try creating new branch; if it already exists, reuse it
+        if ! git worktree add "$worktree_path" -b "$branch_name" 2>/dev/null; then
+            if git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
+                log_info "Branch '$branch_name' already exists, reusing"
+                if ! git worktree add "$worktree_path" "$branch_name" 2>&1; then
+                    log_error "Failed to create worktree for existing branch '$branch_name'"
+                    return 1
+                fi
+            else
+                log_error "Failed to create worktree with new branch '$branch_name'"
+                return 1
+            fi
         fi
     else
         # Check if branch is already checked out in another worktree
