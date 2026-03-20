@@ -290,15 +290,11 @@ render_topology() {
                 spawn_info+=("session gone")
             fi
         else
-            # Check status field from markdown or git merge state
+            # Check status field from markdown
             local md_status="${task_statuses[$i]}"
-            local branch_name="wt/${sanitized}"
             if echo "$md_status" | grep -q '\[x\]'; then
                 spawn_status+=("completed")
                 spawn_info+=("")
-            elif git branch --merged main 2>/dev/null | grep -q "^ *${branch_name}$"; then
-                spawn_status+=("completed")
-                spawn_info+=("merged")
             else
                 spawn_status+=("none")
                 spawn_info+=("")
