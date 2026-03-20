@@ -51,16 +51,16 @@ main() {
 
         # Categorize
         if $session_exists && $worktree_exists; then
-            ((ok_count++))
+            ok_count=$((ok_count + 1))
         elif $session_exists && ! $worktree_exists; then
-            ((orphaned_session_count++))
+            orphaned_session_count=$((orphaned_session_count + 1))
             orphaned_sessions+=("$session")
         elif ! $session_exists && $worktree_exists; then
-            ((orphaned_worktree_count++))
+            orphaned_worktree_count=$((orphaned_worktree_count + 1))
             orphaned_worktrees+=("$session")
         else
             # Both missing - stale metadata
-            ((stale_count++))
+            stale_count=$((stale_count + 1))
             delete_session "$session"
         fi
     done
@@ -173,7 +173,7 @@ main() {
             done
             if ! $branch_in_use; then
                 orphaned_branches+=("$repo_path:$wt_branch")
-                ((orphaned_branch_count++))
+                orphaned_branch_count=$((orphaned_branch_count + 1))
             fi
         done < <(git branch --list 'wt/*' 2>/dev/null)
     done
