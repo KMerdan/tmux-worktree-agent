@@ -594,12 +594,17 @@ spawn_session_for_worktree() {
     local agent_cmd=""
 
     case "$auto_agent" in
-        on|prompt)
-            if agent_cmd=$(select_agent) && [ -n "$agent_cmd" ]; then
+        on)
+            agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
+            if command_exists "${agent_cmd%% *}"; then
                 launch_agent=true
             else
-                launch_agent=false
-                agent_cmd=""
+                log_warn "Agent '$agent_cmd' not found"
+            fi
+            ;;
+        prompt)
+            if agent_cmd=$(select_agent) && [ -n "$agent_cmd" ]; then
+                launch_agent=true
             fi
             ;;
         off)
