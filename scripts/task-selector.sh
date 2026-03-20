@@ -62,6 +62,7 @@ build_topology_lines() {
     local task_file="$1"
     local repo_name="$2"
     local metadata_file="$3"
+    local repo_path="$4"
 
     local GREEN='\033[0;32m'
     local YELLOW='\033[1;33m'
@@ -76,16 +77,35 @@ build_topology_lines() {
         local sanitized
         sanitized=$(echo "$tid" | tr '/' '-' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
         local session_name="${repo_name}-${sanitized}"
+        local branch_name="wt/${sanitized}"
 
-        local icon
+        # Pre-check metadata and session state
+        local has_metadata=false
         if [ -f "$metadata_file" ] && jq -e --arg s "$session_name" '.[$s]' "$metadata_file" >/dev/null 2>&1; then
-            if tmux has-session -t "$session_name" 2>/dev/null; then
-                icon="${GREEN}●${NC}"
-            else
-                icon="${RED}✗${NC}"
-            fi
+            has_metadata=true
+        fi
+
+        local has_session=false
+        if [ "$has_metadata" = true ] && tmux has-session -t "$session_name" 2>/dev/null; then
+            has_session=true
+        fi
+
+        # Check if branch has been merged into main
+        local is_merged=false
+        if [ -n "$repo_path" ] && git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+            is_merged=true
+        fi
+
+        # Priority: active session > merged > markdown [x] > dead session > pending
+        local icon
+        if [ "$has_session" = true ]; then
+            icon="${GREEN}●${NC}"
+        elif [ "$is_merged" = true ]; then
+            icon="${GREEN}✓${NC}"
         elif echo "$task_status" | grep -q '\[x\]'; then
             icon="${GREEN}✓${NC}"
+        elif [ "$has_metadata" = true ]; then
+            icon="${RED}✗${NC}"
         else
             icon="${DIM}○${NC}"
         fi
@@ -120,6 +140,7 @@ build_topology_lines() {
 select_tasks() {
     local task_file="$1"
     local repo_name="$2"
+    local repo_path="$3"
 
     local tasks
     tasks=$(parse_tasks "$task_file")
@@ -135,7 +156,7 @@ select_tasks() {
 
     # Build topology-style lines for fzf
     local formatted
-    formatted=$(build_topology_lines "$task_file" "$repo_name" "$METADATA_FILE")
+    formatted=$(build_topology_lines "$task_file" "$repo_name" "$METADATA_FILE" "$repo_path")
 
     local preview_script="$SCRIPT_DIR/task-preview.sh"
 
@@ -334,7 +355,7 @@ main() {
 
     # Stage 3: Select tasks (with topology view)
     local selected
-    selected=$(select_tasks "$task_file" "$repo_name")
+    selected=$(select_tasks "$task_file" "$repo_name" "$repo_path")
     if [ $? -ne 0 ] || [ -z "$selected" ]; then
         log_info "No tasks selected"
         exit 0

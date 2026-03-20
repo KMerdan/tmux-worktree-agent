@@ -234,6 +234,7 @@ render_topology() {
     local task_file="$1"
     local metadata_file="$2"
     local repo_name="$3"
+    local repo_path="$4"
 
     # Colors
     local GREEN='\033[0;32m'
@@ -274,31 +275,46 @@ render_topology() {
         local sanitized
         sanitized=$(echo "$tid" | tr '/' '-' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
         local session_name="${repo_name}-${sanitized}"
+        local branch_name="wt/${sanitized}"
 
+        # Pre-check metadata and session state
+        local has_metadata=false
         if [ -f "$metadata_file" ] && jq -e --arg s "$session_name" '.[$s]' "$metadata_file" >/dev/null 2>&1; then
-            local agent_cmd
-            agent_cmd=$(jq -r --arg s "$session_name" '.[$s].agent_cmd // ""' "$metadata_file")
-            local branch
-            branch=$(jq -r --arg s "$session_name" '.[$s].branch // ""' "$metadata_file")
+            has_metadata=true
+        fi
 
-            # Check if tmux session is actually running
+        local has_session=false
+        local agent_cmd="" branch=""
+        if [ "$has_metadata" = true ]; then
+            agent_cmd=$(jq -r --arg s "$session_name" '.[$s].agent_cmd // ""' "$metadata_file")
+            branch=$(jq -r --arg s "$session_name" '.[$s].branch // ""' "$metadata_file")
             if tmux has-session -t "$session_name" 2>/dev/null; then
-                spawn_status+=("active")
-                spawn_info+=("${agent_cmd:-agent}:${branch}")
-            else
-                spawn_status+=("dead")
-                spawn_info+=("session gone")
+                has_session=true
             fi
+        fi
+
+        # Check if branch has been merged into main
+        local is_merged=false
+        if [ -n "$repo_path" ] && git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+            is_merged=true
+        fi
+
+        # Priority: active session > merged > markdown [x] > dead session > pending
+        if [ "$has_session" = true ]; then
+            spawn_status+=("active")
+            spawn_info+=("${agent_cmd:-agent}:${branch}")
+        elif [ "$is_merged" = true ]; then
+            spawn_status+=("completed")
+            spawn_info+=("")
+        elif echo "${task_statuses[$i]}" | grep -q '\[x\]'; then
+            spawn_status+=("completed")
+            spawn_info+=("")
+        elif [ "$has_metadata" = true ]; then
+            spawn_status+=("dead")
+            spawn_info+=("session gone")
         else
-            # Check status field from markdown
-            local md_status="${task_statuses[$i]}"
-            if echo "$md_status" | grep -q '\[x\]'; then
-                spawn_status+=("completed")
-                spawn_info+=("")
-            else
-                spawn_status+=("none")
-                spawn_info+=("")
-            fi
+            spawn_status+=("none")
+            spawn_info+=("")
         fi
     done
 
