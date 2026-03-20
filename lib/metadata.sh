@@ -105,7 +105,6 @@ delete_session() {
 # List all sessions
 list_sessions() {
     if [ ! -f "$METADATA_FILE" ]; then
-        echo "[]"
         return 0
     fi
 
@@ -115,7 +114,6 @@ list_sessions() {
 # Get all session data as array
 get_all_sessions() {
     if [ ! -f "$METADATA_FILE" ]; then
-        echo "[]"
         return 0
     fi
 
