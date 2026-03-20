@@ -500,6 +500,16 @@ When you finish your task, you MUST write \`.shared/broadcasts/${task_id}.md\` b
 
 This broadcast is required for the merge orchestrator to review and merge your work.
 Do NOT modify any other file in \`.shared/\`.
+
+## Important: Scaffolding Files
+
+The following files are plugin scaffolding injected into your worktree — they are NOT part of your task:
+- This file (\`${config_file}\`) — agent instructions, do NOT commit
+- \`${task_filename}.md\` — your task description, do NOT commit
+- \`.shared/\` — symlink to shared context directory, do NOT commit
+- \`wt-*.md\` — any task file in the worktree root, do NOT commit
+
+Do NOT \`git add\` these files. Only commit files related to your actual task fix.
 AGENTCFG
 }
 
