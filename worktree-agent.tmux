@@ -18,6 +18,7 @@ default_cleanup_key="C"
 default_ops_key="O"
 default_task_selector_key="T"
 default_generate_tasks_key="G"
+default_merge_orchestrator_key="M"
 
 # Get tmux options with defaults
 get_tmux_option() {
@@ -54,6 +55,7 @@ cleanup_key=$(get_tmux_option "@worktree-cleanup-key" "$default_cleanup_key")
 ops_key=$(get_tmux_option "@worktree-ops-key" "$default_ops_key")
 task_selector_key=$(get_tmux_option "@worktree-task-selector-key" "$default_task_selector_key")
 generate_tasks_key=$(get_tmux_option "@worktree-generate-tasks-key" "$default_generate_tasks_key")
+merge_orchestrator_key=$(get_tmux_option "@worktree-merge-orchestrator-key" "$default_merge_orchestrator_key")
 
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
@@ -74,6 +76,7 @@ tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_p
 tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
 tmux bind-key "$generate_tasks_key" run-shell "$CURRENT_DIR/scripts/generate-task-prompt.sh"
+tmux bind-key "$merge_orchestrator_key" run-shell "$CURRENT_DIR/scripts/merge-orchestrator.sh"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"

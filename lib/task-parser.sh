@@ -293,10 +293,14 @@ render_topology() {
             fi
         fi
 
-        # Check if branch has been merged into main
+        # Check if branch has been merged into main (existing or deleted)
         local is_merged=false
-        if [ -n "$repo_path" ] && git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
-            is_merged=true
+        if [ -n "$repo_path" ]; then
+            if git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+                is_merged=true
+            elif git -C "$repo_path" log --merges --oneline main 2>/dev/null | grep -q "Merge branch '${branch_name}'"; then
+                is_merged=true
+            fi
         fi
 
         # Priority: active session > merged > markdown [x] > dead session > pending

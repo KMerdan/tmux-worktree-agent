@@ -90,10 +90,14 @@ build_topology_lines() {
             has_session=true
         fi
 
-        # Check if branch has been merged into main
+        # Check if branch has been merged into main (existing or deleted)
         local is_merged=false
-        if [ -n "$repo_path" ] && git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
-            is_merged=true
+        if [ -n "$repo_path" ]; then
+            if git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+                is_merged=true
+            elif git -C "$repo_path" log --merges --oneline main 2>/dev/null | grep -q "Merge branch '${branch_name}'"; then
+                is_merged=true
+            fi
         fi
 
         # Priority: active session > merged > markdown [x] > dead session > pending
@@ -249,7 +253,7 @@ spawn_task_worktrees() {
             log_info "Seeded shared context from preamble"
         fi
 
-        # Copy preamble + task block + shared knowledge protocol into the worktree
+        # Copy preamble + task block into the worktree (pure task content, no protocol)
         local branch_filename
         branch_filename=$(echo "$branch_name" | tr '/' '-')
         local task_output="$worktree_path/${branch_filename}.md"
@@ -259,21 +263,18 @@ spawn_task_worktrees() {
             echo "---"
             echo ""
             extract_task_block "$task_file" "$start_line" "$end_line"
-            echo ""
-            echo "---"
-            echo ""
-            echo "## Shared Knowledge Protocol"
-            echo "A shared directory is symlinked at \`.shared/\` in your worktree."
-            echo "- **READ** \`.shared/context.md\` — project context. Do NOT modify."
-            echo "- **READ** \`.shared/broadcasts/\` — updates from other agents working on parallel tasks."
-            echo "- **WRITE** \`.shared/broadcasts/${task_id}.md\` — post YOUR updates here when you make changes that affect other tasks."
-            echo "  Document: what you changed, impact on other tasks, files modified."
-            echo "  Do NOT modify any other file in \`.shared/\`."
         } > "$task_output"
 
         # Spawn session (auto_switch=false for batch mode)
         spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
             "$branch_name" "$worktree_path" "$repo_path" "$title" "false"
+
+        # Write agent config file after spawn (now we know which agent was chosen)
+        local agent_cmd_used
+        agent_cmd_used=$(get_session_field "$session_name" "agent_cmd" 2>/dev/null)
+        if [ -n "$agent_cmd_used" ]; then
+            write_agent_config "$worktree_path" "$agent_cmd_used" "$task_id" "$branch_filename"
+        fi
 
         if [ $? -ne 0 ]; then
             failed_tasks+=("$task_id (session error)")

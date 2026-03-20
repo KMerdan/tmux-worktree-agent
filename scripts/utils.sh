@@ -449,6 +449,60 @@ source_metadata_lib() {
     fi
 }
 
+# Map agent command to its config filename
+# claude -> CLAUDE.md, codex -> AGENTS.md, gemini -> GEMINI.md, etc.
+get_agent_config_filename() {
+    local agent_cmd="$1"
+    local agent_name="${agent_cmd%% *}"  # strip args
+
+    case "$agent_name" in
+        claude)   echo "CLAUDE.md" ;;
+        codex)    echo "AGENTS.md" ;;
+        gemini)   echo "GEMINI.md" ;;
+        opencode) echo "AGENTS.md" ;;
+        *)        echo "AGENTS.md" ;;  # AGENTS.md is the most widely supported fallback
+    esac
+}
+
+# Write agent-specific config file into a worktree with task context and broadcast requirement
+write_agent_config() {
+    local worktree_path="$1"
+    local agent_cmd="$2"
+    local task_id="$3"
+    local task_filename="$4"
+
+    local config_file
+    config_file=$(get_agent_config_filename "$agent_cmd")
+
+    cat > "$worktree_path/$config_file" <<AGENTCFG
+# Task: ${task_id}
+
+Read \`${task_filename}.md\` for your task description and acceptance criteria.
+Read \`.shared/context.md\` for project context.
+Read \`.shared/broadcasts/\` for updates from other agents working on parallel tasks.
+
+## REQUIRED: Write Broadcast on Completion
+
+When you finish your task, you MUST write \`.shared/broadcasts/${task_id}.md\` before stopping:
+
+\`\`\`markdown
+# ${task_id} — Completed
+
+## Changes Made
+- <what you changed, with file paths>
+
+## Impact on Other Tasks
+- <how your changes affect other tasks, or "None — fully independent">
+
+## Files Modified
+- <list of files changed>
+\`\`\`
+
+This broadcast is required for the merge orchestrator to review and merge your work.
+Do NOT modify any other file in \`.shared/\`.
+AGENTCFG
+}
+
 # Set up .shared/ directory and symlink for a worktree
 # Creates ~/.worktrees/<repo>/.shared/broadcasts/ if needed, symlinks into worktree
 setup_shared_dir() {

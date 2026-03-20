@@ -65,6 +65,7 @@ generate_command_list() {
     # === REFERENCE: Task Workflow ===
     echo "ref|📖 Generate task.md|C-a G|Send prompt to current agent to create a task.md following the parser format"
     echo "ref|📖 Task Selector|C-a T|Browse markdown files, validate task format, multi-select tasks, batch-spawn worktree sessions"
+    echo "ref|📖 Merge Orchestrator|C-a M|Send prompt to review broadcasts, fact-check, and merge completed task branches in order"
     echo "---"
 
     # === REFERENCE: Tmux Essentials ===
