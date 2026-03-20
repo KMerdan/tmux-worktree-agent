@@ -221,10 +221,11 @@ decompose_selected_panes() {
         pane_cmd=$(tmux display-message -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null) || true
         tmux break-pane -d -s "$pane_id"
         # Name the new window using session metadata + detected command as agent hint
-        local new_window_id
+        local new_session new_window_id
+        new_session=$(tmux display-message -t "$pane_id" -p '#{session_name}' 2>/dev/null) || true
         new_window_id=$(tmux display-message -t "$pane_id" -p '#{window_id}' 2>/dev/null) || true
-        if [ -n "$new_window_id" ]; then
-            rename_window_from_metadata "$new_window_id" "$pane_cmd" 2>/dev/null || true
+        if [ -n "$new_session" ] && [ -n "$new_window_id" ]; then
+            rename_window_from_metadata "${new_session}:${new_window_id}" "$pane_cmd" 2>/dev/null || true
         fi
         broken_count=$((broken_count + 1))
     done <<< "$unique_panes"
