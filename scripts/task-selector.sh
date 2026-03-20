@@ -78,6 +78,7 @@ build_topology_lines() {
         local session_name="${repo_name}-${sanitized}"
 
         local icon
+        local branch_name="wt/${sanitized}"
         if [ -f "$metadata_file" ] && jq -e --arg s "$session_name" '.[$s]' "$metadata_file" >/dev/null 2>&1; then
             if tmux has-session -t "$session_name" 2>/dev/null; then
                 icon="${GREEN}●${NC}"
@@ -85,6 +86,8 @@ build_topology_lines() {
                 icon="${RED}✗${NC}"
             fi
         elif echo "$task_status" | grep -q '\[x\]'; then
+            icon="${GREEN}✓${NC}"
+        elif git branch --merged main 2>/dev/null | grep -q "^ *${branch_name}$"; then
             icon="${GREEN}✓${NC}"
         else
             icon="${DIM}○${NC}"
