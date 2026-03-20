@@ -8,6 +8,8 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
 
+trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
+
 # The prompt template that instructs the agent to generate a task markdown
 TASK_PROMPT='Based on what we discussed, create a `task.md` file in the repository root that breaks down the work into separate, non-conflicting tasks. Each task must be independently implementable in its own git worktree without merge conflicts with other tasks.
 
@@ -148,6 +150,7 @@ main() {
     rm -f "$tmpfile"
 
     log_success "Task generation prompt sent to agent"
+    sleep 1
 }
 
 main "$@"
