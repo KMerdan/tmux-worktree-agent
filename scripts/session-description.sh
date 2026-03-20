@@ -3,6 +3,9 @@
 # Session description management for tmux-worktree-agent
 # Provides get, set, and prompt commands for session descriptions
 
+# Brief pause on error so user can read messages before popup closes
+trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
+
 set -e
 
 # Get script directory and source dependencies
@@ -92,6 +95,7 @@ cmd_prompt() {
 
     if ! session_in_metadata "$session_name"; then
         log_error "Session '$session_name' not found in metadata"
+        log_info "This command only works inside worktree sessions (prefix + C-w to create one)"
         return 1
     fi
 

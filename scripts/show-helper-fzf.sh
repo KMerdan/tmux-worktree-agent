@@ -62,6 +62,11 @@ generate_command_list() {
     echo "ref|📖 Window/pane operations|C-a O|Interactive popup menu for window/pane management"
     echo "---"
 
+    # === REFERENCE: Task Workflow ===
+    echo "ref|📖 Generate task.md|C-a G|Send prompt to current agent to create a task.md following the parser format"
+    echo "ref|📖 Task Selector|C-a T|Browse markdown files, validate task format, multi-select tasks, batch-spawn worktree sessions"
+    echo "---"
+
     # === REFERENCE: Tmux Essentials ===
     echo "ref|📖 Detach from session|C-a d|Detaches client, session keeps running in background"
     echo "ref|📖 Create new window|C-a c|Creates a new window in the current session"

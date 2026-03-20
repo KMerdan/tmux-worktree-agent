@@ -448,3 +448,111 @@ source_metadata_lib() {
         return 1
     fi
 }
+
+# Create a git worktree for a branch
+# Returns 0 on success, 1 on failure, 2 if worktree already exists and is valid
+create_worktree_for_branch() {
+    local repo_path="$1"
+    local worktree_path="$2"
+    local branch_name="$3"
+    local is_new_branch="${4:-true}"
+
+    # Check if worktree directory already exists
+    if [ -d "$worktree_path" ]; then
+        if cd "$worktree_path" && git rev-parse --git-dir >/dev/null 2>&1; then
+            log_info "Valid worktree already exists: $worktree_path"
+            return 2
+        else
+            log_error "Directory exists but is not a git worktree: $worktree_path"
+            return 1
+        fi
+    fi
+
+    # Create parent directory
+    mkdir -p "$(dirname "$worktree_path")"
+
+    log_info "Creating worktree at: $worktree_path"
+
+    cd "$repo_path" || return 1
+
+    if [ "$is_new_branch" = "true" ]; then
+        if ! git worktree add "$worktree_path" -b "$branch_name" 2>&1; then
+            log_error "Failed to create worktree with new branch '$branch_name'"
+            return 1
+        fi
+    else
+        # Check if branch is already checked out in another worktree
+        if git worktree list | grep -q "\[$branch_name\]"; then
+            log_error "Branch '$branch_name' is already checked out in another worktree"
+            return 1
+        fi
+
+        if ! git worktree add "$worktree_path" "$branch_name" 2>&1; then
+            log_error "Failed to create worktree for branch '$branch_name'"
+            return 1
+        fi
+    fi
+
+    log_success "Worktree created"
+    return 0
+}
+
+# Spawn a tmux session for a worktree with metadata and agent
+# Returns 0 on success, 1 on failure
+spawn_session_for_worktree() {
+    local session_name="$1"
+    local repo_name="$2"
+    local topic="$3"
+    local branch_name="$4"
+    local worktree_path="$5"
+    local repo_path="$6"
+    local description="${7:-}"
+    local auto_switch="${8:-true}"
+
+    # Determine if we should launch agent
+    local auto_agent="${WORKTREE_AUTO_AGENT:-on}"
+    local launch_agent=false
+    local agent_cmd=""
+
+    case "$auto_agent" in
+        on|prompt)
+            if agent_cmd=$(select_agent) && [ -n "$agent_cmd" ]; then
+                launch_agent=true
+            else
+                launch_agent=false
+                agent_cmd=""
+            fi
+            ;;
+        off)
+            launch_agent=false
+            agent_cmd=""
+            ;;
+    esac
+
+    # Create tmux session
+    log_info "Creating tmux session: $session_name"
+    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic"
+
+    # Save metadata
+    local agent_available=false
+    if [ -n "$agent_cmd" ]; then
+        agent_available=true
+    fi
+
+    # Source metadata.sh if save_session not available
+    if ! type save_session >/dev/null 2>&1; then
+        source "$PLUGIN_DIR/lib/metadata.sh"
+    fi
+
+    save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
+        "$worktree_path" "$repo_path" "$agent_available" "$description" "$agent_cmd"
+
+    log_success "Session created: $session_name"
+
+    # Switch to session if requested
+    if [ "$auto_switch" = "true" ]; then
+        switch_to_session "$session_name"
+    fi
+
+    return 0
+}
