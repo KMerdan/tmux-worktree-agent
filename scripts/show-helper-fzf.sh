@@ -183,8 +183,10 @@ main() {
         header="$header | 📖=Reference keybindings | Type to search, Esc to close"
     fi
 
-    # Create preview script
-    local preview_script="$SCRIPT_DIR/.helper-preview.sh"
+    # Create preview script via mktemp to avoid race conditions
+    local preview_script
+    preview_script=$(mktemp "${TMPDIR:-/tmp}/helper-preview.XXXXXX")
+    trap "rm -f '$preview_script'" EXIT
     cat > "$preview_script" << 'PREVIEW_EOF'
 #!/usr/bin/env bash
 line="$1"
@@ -260,9 +262,6 @@ PREVIEW_EOF
         --cycle \
         --reverse \
         --color 'pointer:green,marker:green,header:cyan')
-
-    # Cleanup
-    rm -f "$preview_script"
 
     # Handle selection
     if [ -n "$selection" ]; then

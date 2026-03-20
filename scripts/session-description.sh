@@ -15,8 +15,8 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
 
-# Get current session name
-get_current_session() {
+# Resolve current session name (named to avoid shadowing utils.sh get_current_session)
+resolve_current_session() {
     # Try tmux first
     if [ -n "${TMUX:-}" ]; then
         tmux display-message -p '#S'
@@ -35,7 +35,7 @@ cmd_get() {
     local session_name="${1:-}"
 
     if [ -z "$session_name" ]; then
-        session_name=$(get_current_session)
+        session_name=$(resolve_current_session)
     fi
 
     if [ -z "$session_name" ]; then
@@ -63,7 +63,7 @@ cmd_set() {
     # If only one argument, treat it as description for current session
     if [ -z "$description" ]; then
         description="$session_name"
-        session_name=$(get_current_session)
+        session_name=$(resolve_current_session)
 
         if [ -z "$session_name" ]; then
             log_error "Could not determine session name"
@@ -85,7 +85,7 @@ cmd_prompt() {
     local session_name="${1:-}"
 
     if [ -z "$session_name" ]; then
-        session_name=$(get_current_session)
+        session_name=$(resolve_current_session)
     fi
 
     if [ -z "$session_name" ]; then
