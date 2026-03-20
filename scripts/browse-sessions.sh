@@ -9,6 +9,8 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
 
+trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
+
 # Check dependencies
 if ! check_dependencies; then
     exit 1
@@ -314,9 +316,12 @@ main() {
                     main_repo_path=$(get_session_field "$session_name" "main_repo_path")
 
                     # Recreate worktree
-                    cd "$main_repo_path"
+                    cd "$main_repo_path" || { log_error "Main repo not found: $main_repo_path"; exit 1; }
                     mkdir -p "$(dirname "$worktree_path")"
-                    git worktree add "$worktree_path" "$branch"
+                    if ! git worktree add "$worktree_path" "$branch"; then
+                        log_error "Failed to recreate worktree: $worktree_path (branch: $branch)"
+                        exit 1
+                    fi
 
                     log_success "Worktree recreated"
                     switch_to_session "$session_name"
