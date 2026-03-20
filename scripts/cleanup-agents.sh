@@ -42,8 +42,9 @@ is_process_active() {
     # Get CPU percentage (2nd field of ps output)
     local cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | xargs)
 
-    # If CPU > 0.0, it's active
-    if [ -n "$cpu" ] && [ "$(echo "$cpu > 0.0" | bc 2>/dev/null || echo "0")" = "1" ]; then
+    # If CPU > 0, it's active (use awk for float-to-int, no bc dependency)
+    local cpu_int=$(echo "$cpu" | awk '{print int($1)}')
+    if [ -n "$cpu" ] && [ "${cpu_int:-0}" -gt 0 ]; then
         return 0  # Active
     else
         return 1  # Idle
@@ -109,7 +110,7 @@ show_old_claude_processes() {
             echo -e "  ${YELLOW}▲${NC} PID ${YELLOW}${pid}${NC} ${GRAY}(${etime}) [RISKY - In active tmux session]${NC}"
             ((risky_count++))
         # Check CPU activity
-        elif [ -n "$cpu" ] && [ "$(echo "$cpu > 0.0" | bc 2>/dev/null || echo "0")" = "1" ]; then
+        elif [ -n "$cpu" ] && [ "$(echo "$cpu" | awk '{print int($1)}')" -gt 0 ]; then
             echo -e "  ${YELLOW}▲${NC} PID ${YELLOW}${pid}${NC} ${GRAY}(${etime}, CPU: ${cpu}%) [RISKY - Active]${NC}"
             ((risky_count++))
         else
