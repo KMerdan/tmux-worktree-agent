@@ -154,8 +154,8 @@ main() {
             setup_shared_dir "$worktree_path"
 
             # Create session and metadata
-            create_session_and_metadata "$session_name" "$repo_name" "$topic" \
-                "$branch_name" "$worktree_path" "$repo_path"
+            spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
+                "$branch_name" "$worktree_path" "$repo_path" "" "true"
             exit 0
         else
             log_error "Directory exists but is not a git worktree"
@@ -194,56 +194,8 @@ main() {
     setup_shared_dir "$worktree_path"
 
     # Step 6: Create session and metadata
-    create_session_and_metadata "$session_name" "$repo_name" "$topic" \
-        "$branch_name" "$worktree_path" "$repo_path"
-}
-
-# Create tmux session and save metadata
-create_session_and_metadata() {
-    local session_name="$1"
-    local repo_name="$2"
-    local topic="$3"
-    local branch_name="$4"
-    local worktree_path="$5"
-    local repo_path="$6"
-
-    # Determine if we should launch agent
-    local auto_agent="${WORKTREE_AUTO_AGENT:-on}"
-    local launch_agent=false
-    local agent_cmd=""
-
-    case "$auto_agent" in
-        on|prompt)
-            # Show fzf agent picker
-            if agent_cmd=$(select_agent) && [ -n "$agent_cmd" ]; then
-                launch_agent=true
-            else
-                launch_agent=false
-                agent_cmd=""
-            fi
-            ;;
-        off)
-            launch_agent=false
-            agent_cmd=""
-            ;;
-    esac
-
-    # Create tmux session
-    log_info "Creating tmux session: $session_name"
-    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic"
-
-    # Save metadata
-    local agent_available=false
-    if [ -n "$agent_cmd" ]; then
-        agent_available=true
-    fi
-    save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
-        "$worktree_path" "$repo_path" "$agent_available" "" "$agent_cmd"
-
-    log_success "Session created: $session_name"
-
-    # Switch to session
-    switch_to_session "$session_name"
+    spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
+        "$branch_name" "$worktree_path" "$repo_path" "" "true"
 }
 
 # Run main
