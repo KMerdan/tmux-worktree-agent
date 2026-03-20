@@ -75,7 +75,7 @@ tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_curre
 tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/cleanup-agents.sh"
 tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
-tmux bind-key "$generate_tasks_key" run-shell "$CURRENT_DIR/scripts/generate-task-prompt.sh"
+tmux bind-key "$generate_tasks_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/generate-task-prompt.sh"
 tmux bind-key "$merge_orchestrator_key" run-shell "$CURRENT_DIR/scripts/merge-orchestrator.sh"
 
 # Ensure directories exist
