@@ -73,7 +73,7 @@ echo ""
 
 # Function to display process counts
 show_process_counts() {
-    local claude_count=$(pgrep -f "claude" 2>/dev/null | wc -l | xargs)
+    local claude_count=$(ps -eo pid,comm | grep claude | wc -l | xargs)
     local old_claude_count=$(ps -eo pid,etime,comm | grep claude | awk '$2 ~ /-/ {print $1}' | wc -l | xargs)
     local orphan_zsh_count=$(ps -eo pid,ppid,comm | awk '$2 == 1 && $3 ~ /zsh/ {print $1}' | wc -l | xargs)
     local current_session_pids=$(get_current_session_pids | wc -l | xargs)

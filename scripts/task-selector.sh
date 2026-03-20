@@ -32,9 +32,9 @@ browse_markdown_files() {
     # Build preview command
     local preview_cmd
     if command_exists bat; then
-        preview_cmd="bat --style=numbers --color=always '$root'/{}"
+        preview_cmd="bat --style=numbers --color=always \"${root}/{}\""
     else
-        preview_cmd="cat '$root'/{}"
+        preview_cmd="cat \"${root}/{}\""
     fi
 
     local selected

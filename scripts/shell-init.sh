@@ -57,8 +57,10 @@ worktree_agent_init() {
     local banner_width=$((term_width > 60 ? 60 : term_width))
 
     echo ""
+    local repeat=$((banner_width - 21))
+    [ "$repeat" -lt 1 ] && repeat=1
     printf "╭─ Worktree Session "
-    printf '─%.0s' $(seq 1 $((banner_width - 21)))
+    printf '─%.0s' $(seq 1 $repeat)
     printf "╮\n"
 
     printf "│ %-${banner_width}s │\n" "Repo:   $repo"
@@ -75,8 +77,10 @@ worktree_agent_init() {
         done
     fi
 
+    local bottom_repeat=$((banner_width - 2))
+    [ "$bottom_repeat" -lt 1 ] && bottom_repeat=1
     printf "╰"
-    printf '─%.0s' $(seq 1 $((banner_width - 2)))
+    printf '─%.0s' $(seq 1 $bottom_repeat)
     printf "╯\n"
     echo ""
 }
