@@ -118,7 +118,25 @@ main() {
         log_warn "Worktree directory not found (already deleted)"
     fi
 
-    # Step 3: Delete wt/ branch if applicable
+    # Step 3: Clean up .shared if this was the last session for this repo
+    # Must run BEFORE delete_session so find_sessions_by_repo can still see all sessions
+    local repo
+    repo=$(get_session_field "$session_name" "repo")
+    if [ -n "$repo" ]; then
+        local remaining
+        remaining=$(find_sessions_by_repo "$repo" | grep -cv "^${session_name}$" 2>/dev/null || echo "0")
+        if [ "$remaining" -eq 0 ]; then
+            local shared_dir
+            shared_dir="$(dirname "$worktree_path")/.shared"
+            if [ -d "$shared_dir" ]; then
+                log_info "Last session for '$repo', cleaning shared context..."
+                rm -rf "$shared_dir"
+                log_success "Shared context removed"
+            fi
+        fi
+    fi
+
+    # Step 4: Delete wt/ branch if applicable
     if [ -n "$branch" ] && [[ "$branch" == wt/* ]] && [ -d "$main_repo_path" ]; then
         log_info "Deleting branch '$branch'..."
         cd "$main_repo_path"
@@ -131,12 +149,12 @@ main() {
         fi
     fi
 
-    # Step 4: Delete metadata
+    # Step 5: Delete metadata
     log_info "Cleaning metadata..."
     delete_session "$session_name"
     log_success "Metadata cleaned"
 
-    # Step 5: Switch to previous session if needed
+    # Step 6: Switch to previous session if needed
     if [ -n "$previous_session" ]; then
         log_info "Switching to session: $previous_session"
         switch_to_session "$previous_session"

@@ -151,6 +151,7 @@ main() {
         # Check if it's a valid git worktree
         if cd "$worktree_path" && git rev-parse --git-dir >/dev/null 2>&1; then
             log_info "Valid worktree found. Creating session for it..."
+            setup_shared_dir "$worktree_path"
 
             # Create session and metadata
             create_session_and_metadata "$session_name" "$repo_name" "$topic" \
@@ -190,6 +191,7 @@ main() {
     fi
 
     log_success "Worktree created"
+    setup_shared_dir "$worktree_path"
 
     # Step 6: Create session and metadata
     create_session_and_metadata "$session_name" "$repo_name" "$topic" \

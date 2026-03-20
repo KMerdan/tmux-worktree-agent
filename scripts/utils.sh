@@ -449,6 +449,17 @@ source_metadata_lib() {
     fi
 }
 
+# Set up .shared/ directory and symlink for a worktree
+# Creates ~/.worktrees/<repo>/.shared/broadcasts/ if needed, symlinks into worktree
+setup_shared_dir() {
+    local worktree_path="$1"
+    local shared_dir
+    shared_dir="$(dirname "$worktree_path")/.shared"
+    mkdir -p "$shared_dir/broadcasts"
+    # Relative symlink so it works if ~/.worktrees is moved
+    ln -sfn ../.shared "$worktree_path/.shared"
+}
+
 # Create a git worktree for a branch
 # Returns 0 on success, 1 on failure, 2 if worktree already exists and is valid
 create_worktree_for_branch() {
@@ -461,6 +472,7 @@ create_worktree_for_branch() {
     if [ -d "$worktree_path" ]; then
         if cd "$worktree_path" && git rev-parse --git-dir >/dev/null 2>&1; then
             log_info "Valid worktree already exists: $worktree_path"
+            setup_shared_dir "$worktree_path"
             return 2
         else
             log_error "Directory exists but is not a git worktree: $worktree_path"
@@ -506,6 +518,7 @@ create_worktree_for_branch() {
     fi
 
     log_success "Worktree created"
+    setup_shared_dir "$worktree_path"
     return 0
 }
 

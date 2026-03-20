@@ -220,7 +220,15 @@ spawn_task_worktrees() {
             continue
         fi
 
-        # Copy shared context (preamble) + task block into the worktree
+        # Seed shared context from preamble (first spawn only)
+        local shared_dir
+        shared_dir="$(dirname "$worktree_path")/.shared"
+        if [ ! -f "$shared_dir/context.md" ]; then
+            extract_preamble "$task_file" > "$shared_dir/context.md"
+            log_info "Seeded shared context from preamble"
+        fi
+
+        # Copy preamble + task block + shared knowledge protocol into the worktree
         local branch_filename
         branch_filename=$(echo "$branch_name" | tr '/' '-')
         local task_output="$worktree_path/${branch_filename}.md"
@@ -230,6 +238,16 @@ spawn_task_worktrees() {
             echo "---"
             echo ""
             extract_task_block "$task_file" "$start_line" "$end_line"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Shared Knowledge Protocol"
+            echo "A shared directory is symlinked at \`.shared/\` in your worktree."
+            echo "- **READ** \`.shared/context.md\` — project context. Do NOT modify."
+            echo "- **READ** \`.shared/broadcasts/\` — updates from other agents working on parallel tasks."
+            echo "- **WRITE** \`.shared/broadcasts/${task_id}.md\` — post YOUR updates here when you make changes that affect other tasks."
+            echo "  Document: what you changed, impact on other tasks, files modified."
+            echo "  Do NOT modify any other file in \`.shared/\`."
         } > "$task_output"
 
         # Spawn session (auto_switch=false for batch mode)

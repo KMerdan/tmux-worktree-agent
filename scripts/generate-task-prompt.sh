@@ -91,6 +91,10 @@ Rules:
 8. **Out of Scope**: explicitly prevent agents from drifting into other tasks'\'' territory
 9. Set **Depends On** / **Blocks** when task ordering matters
 10. The preamble should contain enough context that an agent reading ONLY the preamble + its task block can work independently without asking questions
+11. Each spawned agent gets a `.shared/` directory (symlinked across all worktrees for the same repo) with:
+    - `.shared/context.md` — seeded from the preamble, read-only for agents
+    - `.shared/broadcasts/` — each agent writes ONLY `.shared/broadcasts/TASK-<its-id>.md` to communicate changes that affect other tasks
+    Include a note in the preamble telling agents about this shared knowledge protocol so they know to check `.shared/broadcasts/` for updates from other tasks and write their own when making cross-task changes.
 
 Write the file now.'
 
