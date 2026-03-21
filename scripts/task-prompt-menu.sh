@@ -12,7 +12,7 @@ trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
 
 main() {
     local action
-    action=$(printf "Generate task.md\nMerge completed tasks\nUpdate constraints" | fzf \
+    action=$(printf "Start sub-agent task\nGenerate task.md\nMerge completed tasks\nUpdate constraints" | fzf \
         --ansi \
         --header="Task Prompts — select an action" \
         --layout=reverse \
@@ -25,6 +25,9 @@ main() {
     fi
 
     case "$action" in
+        "Start sub-agent task")
+            exec "$SCRIPT_DIR/start-task-prompt.sh"
+            ;;
         "Generate task.md")
             exec "$SCRIPT_DIR/generate-task-prompt.sh"
             ;;

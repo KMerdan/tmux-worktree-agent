@@ -18,6 +18,7 @@ default_cleanup_key="C"
 default_ops_key="O"
 default_task_selector_key="T"
 default_task_prompt_key="G"
+default_register_key="A"
 
 # Get tmux options with defaults
 get_tmux_option() {
@@ -54,6 +55,7 @@ cleanup_key=$(get_tmux_option "@worktree-cleanup-key" "$default_cleanup_key")
 ops_key=$(get_tmux_option "@worktree-ops-key" "$default_ops_key")
 task_selector_key=$(get_tmux_option "@worktree-task-selector-key" "$default_task_selector_key")
 task_prompt_key=$(get_tmux_option "@worktree-task-prompt-key" "$default_task_prompt_key")
+register_key=$(get_tmux_option "@worktree-register-key" "$default_register_key")
 
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
@@ -74,6 +76,7 @@ tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_p
 tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
 tmux bind-key "$task_prompt_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-prompt-menu.sh"
+tmux bind-key "$register_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/register-session.sh"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"
