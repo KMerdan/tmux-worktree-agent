@@ -58,7 +58,7 @@ generate_command_list() {
     echo "ref|📖 Edit session description|C-a D|Add/update context description for AI agents"
     echo "ref|📖 Kill current worktree|C-a K|Removes worktree, tmux session, and metadata"
     echo "ref|📖 Fix orphaned sessions|C-a R|Automatically reconcile sessions and worktrees"
-    echo "ref|📖 Cleanup old processes|C-a C|Safe cleanup of old Claude Code agent processes"
+    echo "ref|📖 Register existing session|C-a A|Register current tmux session into plugin metadata"
     echo "ref|📖 Window/pane operations|C-a O|Interactive popup menu for window/pane management"
     echo "---"
 

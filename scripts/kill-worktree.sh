@@ -9,6 +9,9 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
 
+# Brief pause on error so user can read messages before popup closes
+trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
+
 # Main cleanup function
 main() {
     local session_name="$1"
@@ -111,7 +114,7 @@ main() {
         if [ "$current_session" = "$session_name" ]; then
             # Get list of other sessions
             local sessions
-            sessions=$(tmux list-sessions -F '#{session_name}' | grep -v "^$session_name$" | head -1)
+            sessions=$(tmux list-sessions -F '#{session_name}' | grep -v "^$session_name$" | head -1 || true)
 
             if [ -n "$sessions" ]; then
                 previous_session="$sessions"

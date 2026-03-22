@@ -179,15 +179,39 @@ main() {
             exit 1
         fi
     else
-        # Selected existing branch → create wt/<topic> branching FROM it
-        local new_branch="wt/$topic"
-        log_info "Creating branch '$new_branch' from '$branch_name'"
-        if ! git worktree add "$worktree_path" -b "$new_branch" "$branch_name"; then
-            log_error "Failed to create worktree with branch '$new_branch' from '$branch_name'"
-            log_info "Git error shown above"
-            exit 1
-        fi
-        branch_name="$new_branch"
+        # Selected existing branch → ask: use directly or create new branch from it
+        local branch_action
+        branch_action=$(choose "Branch '$branch_name' exists. How to use it?" \
+            "Use directly" "Create wt/$topic from it" "Cancel")
+
+        case "$branch_action" in
+            "Use directly")
+                # Check if branch is already checked out in another worktree
+                if git worktree list | grep -q "\[$branch_name\]"; then
+                    log_error "Branch '$branch_name' is already checked out in another worktree"
+                    exit 1
+                fi
+                if ! git worktree add "$worktree_path" "$branch_name"; then
+                    log_error "Failed to create worktree for branch '$branch_name'"
+                    log_info "Git error shown above"
+                    exit 1
+                fi
+                ;;
+            "Create wt/$topic from it")
+                local new_branch="wt/$topic"
+                log_info "Creating branch '$new_branch' from '$branch_name'"
+                if ! git worktree add "$worktree_path" -b "$new_branch" "$branch_name"; then
+                    log_error "Failed to create worktree with branch '$new_branch' from '$branch_name'"
+                    log_info "Git error shown above"
+                    exit 1
+                fi
+                branch_name="$new_branch"
+                ;;
+            Cancel|*)
+                log_info "Cancelled"
+                exit 0
+                ;;
+        esac
     fi
 
     log_success "Worktree created"

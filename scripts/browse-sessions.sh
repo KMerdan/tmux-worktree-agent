@@ -244,9 +244,9 @@ main() {
 
     # Build session list
     local session_list
-    session_list=$(build_session_list)
+    session_list=$(build_session_list) || true
 
-    if [ $? -ne 0 ]; then
+    if [ -z "$session_list" ] || [ "$session_list" = "No sessions found" ]; then
         log_warn "No worktree sessions found"
         log_info "Create one with: prefix + C-w"
         echo ""
@@ -309,12 +309,14 @@ PREVIEW_EOF
                 stored_agent=$(get_session_agent "$session_name")
                 local topic
                 topic=$(get_session_field "$session_name" "topic")
+                local branch
+                branch=$(get_session_field "$session_name" "branch")
 
                 # Create session with stored agent
                 if [ -n "$stored_agent" ]; then
-                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent" "$topic"
+                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent" "$topic" "$branch"
                 else
-                    create_tmux_session "$session_name" "$worktree_path" false "" "$topic"
+                    create_tmux_session "$session_name" "$worktree_path" false "" "$topic" "$branch"
                 fi
 
                 log_success "Session created: $session_name"

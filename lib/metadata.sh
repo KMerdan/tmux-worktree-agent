@@ -175,7 +175,7 @@ clean_orphaned_metadata() {
         # Check if both session and worktree are gone
         if ! tmux has-session -t "$session" 2>/dev/null && [ ! -d "$worktree_path" ]; then
             delete_session "$session"
-            ((cleaned++))
+            cleaned=$((cleaned + 1))
         fi
     done
 

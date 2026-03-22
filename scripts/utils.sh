@@ -159,29 +159,71 @@ session_exists() {
     tmux has-session -t "$1" 2>/dev/null
 }
 
+# Read-based fallback for prompt (used when gum fails or is unavailable)
+_prompt_read() {
+    local message="$1"
+    local default="${2:-}"
+
+    echo -n "$message" >&2
+    if [ -n "$default" ]; then
+        echo -n " [$default]" >&2
+    fi
+    echo -n ": " >&2
+    local response
+    if [ -r /dev/tty ]; then
+        read -r response </dev/tty
+    else
+        read -r response
+    fi
+    echo "${response:-$default}"
+}
+
+# Read-based fallback for confirm
+_confirm_read() {
+    local message="$1"
+
+    echo -n "$message [y/N]: " >&2
+    local response
+    if [ -r /dev/tty ]; then
+        read -r response </dev/tty
+    else
+        read -r response
+    fi
+    case "$response" in
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Read-based fallback for choose
+_choose_read() {
+    local prompt_msg="$1"
+    shift
+    local options=("$@")
+
+    echo "$prompt_msg" >&2
+    select opt in "${options[@]}"; do
+        if [ -n "$opt" ]; then
+            echo "$opt"
+            break
+        fi
+    done < /dev/tty
+}
+
+# Check if gum can be used (installed AND has TTY access)
+_gum_available() {
+    command_exists gum && [ -r /dev/tty ] && [ -w /dev/tty ]
+}
+
 # Prompt user (with fallback from gum to read)
 prompt() {
     local message="$1"
     local default="${2:-}"
 
-    if command_exists gum; then
-        gum input --placeholder "$message" --value "$default"
+    if _gum_available; then
+        gum input --placeholder "$message" --value "$default" < /dev/tty
     else
-        # Output prompt to stderr to avoid capturing it
-        echo -n "$message" >&2
-        if [ -n "$default" ]; then
-            echo -n " [$default]" >&2
-        fi
-        echo -n ": " >&2
-        # Read input - try /dev/tty first, fall back to stdin
-        local response
-        if [ -r /dev/tty ]; then
-            read -r response </dev/tty
-        else
-            read -r response
-        fi
-        # Output only the response to stdout
-        echo "${response:-$default}"
+        _prompt_read "$message" "$default"
     fi
 }
 
@@ -190,21 +232,11 @@ confirm() {
     local message="$1"
     local default="${2:-n}"
 
-    if command_exists gum; then
-        gum confirm "$message"
+    if _gum_available; then
+        gum confirm "$message" < /dev/tty
         return $?
     else
-        echo -n "$message [y/N]: " >&2
-        local response
-        if [ -r /dev/tty ]; then
-            read -r response </dev/tty
-        else
-            read -r response
-        fi
-        case "$response" in
-            [yY]|[yY][eE][sS]) return 0 ;;
-            *) return 1 ;;
-        esac
+        _confirm_read "$message"
     fi
 }
 
@@ -214,16 +246,10 @@ choose() {
     shift
     local options=("$@")
 
-    if command_exists gum; then
-        gum choose --header "$prompt_msg" "${options[@]}"
+    if _gum_available; then
+        gum choose --header "$prompt_msg" "${options[@]}" < /dev/tty
     else
-        echo "$prompt_msg"
-        select opt in "${options[@]}"; do
-            if [ -n "$opt" ]; then
-                echo "$opt"
-                break
-            fi
-        done
+        _choose_read "$prompt_msg" "${options[@]}"
     fi
 }
 
@@ -373,14 +399,22 @@ get_worktree_path() {
 }
 
 # Generate window name as "agent:branch" from session metadata
-# Usage: generate_window_name [session_name] [agent_override]
-# Falls back to "shell" if no metadata
+# Usage: generate_window_name [session_name] [agent_override] [branch_override]
+# Falls back to "shell" if no metadata and no overrides
 generate_window_name() {
     local session_name="${1:-$(tmux display-message -p '#{session_name}')}"
     local agent_override="$2"
+    local branch_override="$3"
 
     local branch agent_label
-    if session_in_metadata "$session_name"; then
+
+    # Use overrides first, then metadata, then fallback
+    if [ -n "$branch_override" ]; then
+        branch="$branch_override"
+        agent_label="${agent_override%% *}"
+        agent_label="${agent_label:-sh}"
+        echo "${agent_label}:${branch}"
+    elif session_in_metadata "$session_name"; then
         branch=$(get_session_field "$session_name" "branch")
         if [ -n "$agent_override" ]; then
             agent_label="${agent_override%% *}"
@@ -396,13 +430,14 @@ generate_window_name() {
 }
 
 # Rename a window using session metadata
-# Usage: rename_window_from_metadata <window_target> [agent_override]
+# Usage: rename_window_from_metadata <window_target> [agent_override] [branch_override]
 rename_window_from_metadata() {
     local window_target="$1"
     local agent_override="$2"
+    local branch_override="$3"
     local session_name="${window_target%%:*}"
     local name
-    name=$(generate_window_name "$session_name" "$agent_override")
+    name=$(generate_window_name "$session_name" "$agent_override" "$branch_override")
     tmux rename-window -t "$window_target" "$name"
 }
 
@@ -413,13 +448,14 @@ create_tmux_session() {
     local launch_agent="${3:-true}"
     local agent_cmd="${4:-}"
     local topic="${5:-}"
+    local branch="${6:-}"
 
     # Create detached session
     tmux new-session -d -s "$session_name" -c "$worktree_path"
 
-    # Set window name to agent:topic (e.g. codex:re_ai)
+    # Set window name to agent:branch (e.g. claude:wt/bug-fix)
     if [ -n "$topic" ]; then
-        rename_window_from_metadata "$session_name:0" "$agent_cmd"
+        rename_window_from_metadata "$session_name:0" "$agent_cmd" "$branch"
     fi
 
     # Launch agent if requested
@@ -624,7 +660,7 @@ spawn_session_for_worktree() {
 
     # Create tmux session
     log_info "Creating tmux session: $session_name"
-    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic"
+    create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic" "$branch_name"
 
     # Save metadata
     local agent_available=false
