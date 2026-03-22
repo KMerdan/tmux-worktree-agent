@@ -120,6 +120,28 @@ get_current_branch() {
     git rev-parse --abbrev-ref HEAD 2>/dev/null
 }
 
+# Get the default/base branch for a repo (main, master, trunk, etc.)
+get_default_branch() {
+    local repo_path="${1:-.}"
+
+    # Most reliable: what the remote considers its HEAD
+    local branch
+    branch=$(cd "$repo_path" && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    if [ -n "$branch" ]; then
+        echo "$branch"
+        return 0
+    fi
+
+    # Fallback: user's global git config default
+    branch=$(git config --global init.defaultBranch 2>/dev/null)
+    if [ -n "$branch" ]; then
+        echo "$branch"
+        return 0
+    fi
+
+    echo "main"
+}
+
 # Sanitize name for use in paths and session names
 sanitize_name() {
     echo "$1" | tr '/' '-' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'

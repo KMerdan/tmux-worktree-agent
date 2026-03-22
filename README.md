@@ -1,540 +1,289 @@
 # tmux-worktree-agent
 
-A tmux plugin that optimizes workflows for managing multiple AI coding agent instances across git worktrees. Enable human multithreading by working on different topics/branches simultaneously with isolated tmux sessions.
+Run multiple AI coding agents in parallel -- one keybind creates an isolated git worktree + tmux session, each with its own agent instance. Human multithreading for AI-assisted development.
+
+![demo](docs/demo.gif)
+
+> The demo shows: creating a new worktree session with `prefix + C-w`, switching between sessions with the fzf browser (`prefix + w`), and the agent status indicators updating live in the status bar.
+
+---
 
 ## Features
 
-- **One-Keybind Workflow**: Create isolated worktree + tmux session with a single keystroke
-- **Agent-Agnostic**: Works with any AI coding CLI (Claude Code, Gemini, OpenCode, Codex, etc.)
-- **Smart Browser**: Fuzzy search and switch between worktree sessions with fzf
-- **Session Descriptions**: Provide context for AI agents on first shell startup
-- **Orphan Detection**: Automatically detects and helps fix orphaned sessions/worktrees
-- **TPM Ready**: Simple installation via Tmux Plugin Manager
-- **Status Line Integration**: Visual indicators for worktree sessions
+- **One-keybind workflow** -- create a git worktree, tmux session, and launch an agent in a single step
+- **fzf session browser** -- fuzzy search, switch, and delete sessions with a live preview pane
+- **Agent status bar** -- color-coded per-session agent state auto-appended to `status-right`
+- **Task batch dispatch** -- parse tasks from Markdown files and spawn multiple agent sessions at once
+- **Orphan detection** -- scan for sessions without worktrees and worktrees without sessions, fix interactively
+- **Session descriptions** -- attach a purpose string to each session; displayed in a banner on shell start
+- **Session registration** -- register any existing tmux session into plugin metadata without a full create flow
+- **Agent-agnostic** -- works with `claude`, `gemini`, `opencode`, `codex`, or any CLI tool
+- **TPM-ready** -- three lines to install
 
-## Why?
+---
 
-Modern AI coding workflows often involve:
-- Testing different approaches in parallel
-- Working on multiple features/bugs simultaneously
-- Keeping agent context isolated per topic
-- Switching between tasks without losing state
+## Requirements
 
-This plugin makes it seamless to manage multiple git worktrees, each with its own tmux session and AI agent instance.
+**Required**
+
+| Dependency | Minimum version | Purpose |
+|---|---|---|
+| tmux | 3.0 (3.2+ for popups) | Core runtime |
+| git | 2.5 | Worktree support |
+| fzf | 0.20 | Session browser |
+| jq | any | Metadata JSON |
+
+**Optional**
+
+| Dependency | Purpose |
+|---|---|
+| bat | Syntax-highlighted previews (falls back to `cat`) |
+| gum | Prettier interactive prompts (falls back to `read`) |
+| AI agent CLI | `claude`, `gemini`, `opencode`, `codex`, etc. |
+
+---
 
 ## Installation
 
-### Prerequisites
-
-**Required:**
-- tmux >= 3.0
-- git >= 2.5
-- fzf >= 0.20
-- jq (JSON processing)
-
-**Optional:**
-- claude/gemini/opencode/codex (or any AI coding CLI)
-- bat (for syntax highlighted previews, fallback to cat)
-- gum (for prettier prompts, fallback to read)
-
-### Install with TPM
+### TPM (recommended)
 
 Add to `~/.tmux.conf`:
 
-```bash
+```tmux
 set -g @plugin 'KMerdan/tmux-worktree-agent'
 
-# Optional configuration
-set -g @worktree-path '~/.worktrees'              # Worktree storage location
-set -g @worktree-agent-cmd 'claude'               # Agent command
-set -g @worktree-auto-agent 'on'                  # 'on', 'off', 'prompt'
+# Optional config (all values shown are defaults)
+set -g @worktree-path '~/.worktrees'
+set -g @worktree-agent-cmd 'claude'
+set -g @worktree-auto-agent 'on'
 ```
 
-Then reload tmux config and install:
+Then inside tmux: `prefix + I` to install.
+
+### Manual
+
 ```bash
-# Reload tmux config
+git clone https://github.com/KMerdan/tmux-worktree-agent \
+    ~/.tmux/plugins/tmux-worktree-agent
+
+# Add to ~/.tmux.conf
+run-shell ~/.tmux/plugins/tmux-worktree-agent/worktree-agent.tmux
+
+# Reload
 tmux source-file ~/.tmux.conf
-
-# Install plugins (prefix + I)
 ```
 
-### Shell Integration (Optional)
+---
 
-For session descriptions and context banners, add to your shell config:
+## Quick Start
 
-**Bash** (`~/.bashrc`):
-```bash
-# Source tmux-worktree-agent shell integration
-source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
-```
+Three keybindings to know first:
 
-**Zsh** (`~/.zshrc`):
-```bash
-# Source tmux-worktree-agent shell integration
-source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
-```
+| Keybind | What it does |
+|---|---|
+| `prefix + C-w` | Create worktree + session (enter branch and topic) |
+| `prefix + w` | Browse all sessions -- switch, delete, preview |
+| `prefix + W` | Quick create using the current branch (just enter a topic) |
 
-This enables:
-- **Session descriptions**: Prompts you to describe the session purpose on first shell startup
-- **Context banners**: Displays repo, branch, topic, and description when starting a shell
-- **AI agent context**: Agents can read the description to understand what you're working on
+After creating a session, the plugin:
+1. Creates `~/.worktrees/<repo>/<topic>/` as a git worktree
+2. Opens a new tmux session named `<repo>-<topic>`
+3. Launches the configured agent (unless `@worktree-auto-agent` is `off`)
+4. Switches you to the new session
 
-Example banner:
-```
-╭─ Worktree Session ──────────────────────────────────╮
-│ Repo:   tmux-worktree-agent                         │
-│ Branch: feat/add-description                        │
-│ Topic:  add-description                             │
-│                                                     │
-│ 📝 Implementing user-provided descriptions for     │
-│    sessions to give AI agents initial context      │
-╰─────────────────────────────────────────────────────╯
-```
-
-## Usage
-
-### Quick Start
-
-1. **Create a new worktree session**: `prefix + C-w`
-   - Enter branch name
-   - Enter topic/description
-   - Plugin creates worktree, session, and launches agent
-
-2. **Browse sessions**: `prefix + w`
-   - Fuzzy search all sessions
-   - `Enter` to switch
-   - `Ctrl-d` to delete
-   - `Tab` to toggle preview
-
-3. **Quick create from current branch**: `prefix + W`
-   - Auto-detects current branch
-   - Just enter topic name
-
-4. **Kill current worktree**: `prefix + K`
-   - Removes session, worktree, and metadata
-
-5. **Reconcile orphaned states**: `prefix + R`
-   - Scans for orphaned sessions/worktrees
-   - Shows summary and fix options
-
-6. **Interactive help with quick commands**: `prefix + ?`
-   - Shows all keybindings and tips
-   - Press keys to execute git commands instantly
-   - No need to type commands manually
-
-### Workflows
-
-#### Starting a New Feature
-
-```bash
-# From main repo
-prefix + C-w
-
-# Enter:
-Branch: feature/auth
-Topic: user-authentication
-
-# Result:
-# - Worktree created at: ~/.worktrees/myrepo/user-authentication
-# - Session created: myrepo-user-authentication
-# - Agent launched: claude
-# - Automatically switched to new session
-```
-
-#### Quick Worktree from Current Branch
-
-```bash
-# While on branch feature/auth
-prefix + W
-
-# Enter:
-Topic: testing-oauth
-
-# Result:
-# - Uses current branch (feature/auth)
-# - Creates worktree + session instantly
-```
-
-#### Switching Between Sessions
-
-```bash
-prefix + w
-
-# fzf browser appears:
-# ● myrepo-user-authentication  feature/auth      ~/.worktrees/...
-# ● myrepo-bugfix-login         bugfix/login      ~/.worktrees/...
-# ○ myrepo-refactor             main              ~/.worktrees/...
-
-# Type to fuzzy search, Enter to switch
-```
-
-#### Using Interactive Helper
-
-```bash
-prefix + ?
-
-# Interactive helper appears with git commands:
-# Git Quick Actions (press key to execute):
-#   s) git status
-#   w) git worktree list
-#   b) git branch
-#   l) git log --oneline -10
-#   d) git diff
-#   a) git add -A
-#   f) git fetch --all
-
-# Just press 's' to run git status instantly!
-# Press 'q' to quit
-```
-
-#### Cleaning Up
-
-```bash
-# Clean up current worktree session
-prefix + K
-
-# Confirms, then:
-# - Kills tmux session
-# - Removes git worktree
-# - Cleans metadata
-# - Switches to another session
-
-# Clean up old agent processes
-prefix + C
-
-# Interactive cleanup tool:
-# - Shows old Claude processes (>1 day)
-# - Lists orphaned zsh processes
-# - Safe cleanup with confirmation
-# - Multiple cleanup options available
-```
-
-### Browser Interface
-
-The session browser (`prefix + w`) provides:
-
-**List View:**
-- Session Status:
-  - `●` - Active session (session + worktree exist)
-  - `○` - Worktree only (no session running)
-  - `⚠` - Session only (worktree deleted)
-  - `✗` - Stale (both missing, will be cleaned)
-- Agent Status:
-  - `●` - Agent actively working (recent output + CPU)
-  - `○` - Agent waiting for input (idle)
-  - `◌` - Agent stopped (no process)
-  - `─` - N/A (session not running)
-
-**Keybindings:**
-- `Enter` - Switch to session (or recreate if needed)
-- `Ctrl-d` - Delete session + worktree
-- `Ctrl-r` - Refresh list
-- `Tab` - Toggle preview
-- `Esc` - Cancel
-
-**Preview Pane:**
-Shows:
-- Session metadata (repo, branch, created date)
-- Active windows
-- Git status (if worktree exists)
-- Worktree path
-
-### Orphaned States
-
-The plugin automatically handles orphaned states:
-
-**Session exists, worktree deleted:**
-- Shows `⚠` in browser
-- Offers to: Recreate worktree / Kill session / Cancel
-
-**Worktree exists, no session:**
-- Shows `○` in browser
-- Offers to: Create session / Delete worktree / Cancel
-
-**Both missing (stale):**
-- Automatically cleaned from metadata
-- Run `prefix + R` to scan and clean
+---
 
 ## Configuration
 
-### Default Keybindings
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `@worktree-path` | `~/.worktrees` | Root directory for all worktrees |
+| `@worktree-agent-cmd` | `claude` | Agent command sent to the new session |
+| `@worktree-agent-list` | `claude` | Known agents for status detection |
+| `@worktree-auto-agent` | `on` | `on` auto-launches, `off` skips, `prompt` asks each time |
+
+### Keybind options
+
+All keybinds are customizable. Set any of these in `~/.tmux.conf` before the plugin loads:
+
+| Option | Default | Description |
+|---|---|---|
+| `@worktree-browser-key` | `w` | Open session browser |
+| `@worktree-create-key` | `C-w` | Create worktree session (full) |
+| `@worktree-quick-create-key` | `W` | Quick create from current branch |
+| `@worktree-kill-key` | `K` | Kill current worktree + session |
+| `@worktree-refresh-key` | `R` | Reconcile orphaned metadata |
+| `@worktree-description-key` | `D` | Edit session description |
+| `@worktree-cleanup-key` | `C` | Clean up old agent processes |
+| `@worktree-ops-key` | `O` | Window/pane operations popup |
+| `@worktree-task-selector-key` | `T` | Task batch-dispatch from Markdown |
+| `@worktree-task-prompt-key` | `G` | Task prompt menu (generate / merge / update) |
+| `@worktree-register-key` | `A` | Register current session into metadata |
+| `@worktree-helper-key` | `?` | Show help and git quick-actions |
+
+---
+
+## Keybindings Reference
+
+| Keybind | Script | Description |
+|---|---|---|
+| `prefix + w` | `browse-sessions.sh` | fzf browser -- switch, delete, preview sessions |
+| `prefix + C-w` | `create-worktree.sh` | Full create: enter branch + topic |
+| `prefix + W` | `create-worktree.sh --quick` | Quick create: auto-detect branch, enter topic |
+| `prefix + K` | `kill-worktree.sh` | Remove session, worktree, and metadata |
+| `prefix + R` | `reconcile.sh` | Scan and repair orphaned sessions/worktrees |
+| `prefix + D` | `session-description.sh` | Edit the description for the current session |
+| `prefix + A` | `register-session.sh` | Register current session into plugin metadata |
+| `prefix + T` | `task-selector.sh` | Parse tasks from Markdown, batch-spawn sessions |
+| `prefix + G` | `task-prompt-menu.sh` | Task prompt menu: start task, generate, merge, update |
+| `prefix + C` | `cleanup-agents.sh` | Interactive cleanup of stale agent processes |
+| `prefix + O` | `window-pane-ops.sh` | Window and pane layout operations |
+| `prefix + ?` | `show-helper-fzf.sh` | Help popup with one-key git quick-actions |
+
+### Session browser actions (`prefix + w`)
 
 | Key | Action |
-|-----|--------|
-| `prefix + w` | Browse/switch worktree sessions |
-| `prefix + C-w` | Create new worktree session (full) |
-| `prefix + W` | Quick create (auto-detect current branch) |
-| `prefix + K` | Kill current worktree + session |
-| `prefix + R` | Reconcile/refresh metadata |
-| `prefix + D` | Edit session description |
-| `prefix + C` | Clean up old agent processes |
-| `prefix + O` | Window/pane ops popup |
-| `prefix + ?` | Show help/keybindings |
+|---|---|
+| `Enter` | Switch to session (recreates session if worktree-only) |
+| `Ctrl-d` | Delete session + worktree |
+| `Ctrl-r` | Refresh list |
+| `Tab` | Toggle preview pane |
+| `Esc` | Cancel |
 
-### Custom Keybindings
+### Session browser status indicators
 
-```bash
-# Change keybindings
-set -g @worktree-browser-key 'w'
-set -g @worktree-create-key 'C-w'
-set -g @worktree-quick-create-key 'W'
-set -g @worktree-kill-key 'K'
-set -g @worktree-refresh-key 'R'
-set -g @worktree-description-key 'D'
-set -g @worktree-cleanup-key 'C'
-set -g @worktree-ops-key 'O'
-set -g @worktree-helper-key '?'
+**Session column**
+
+| Symbol | Meaning |
+|---|---|
+| `●` | Active -- session and worktree both exist |
+| `○` | Worktree only -- no session running |
+| `⚠` | Session only -- worktree has been deleted |
+| `✗` | Stale -- both missing, will be cleaned |
+
+**Agent column**
+
+| Symbol | Meaning |
+|---|---|
+| `●` | Actively working (recent output + CPU activity) |
+| `⏎` | Waiting for user input |
+| `◌` | Stopped -- no process found |
+| `─` | N/A -- session not running |
+
+---
+
+## How It Works
+
+```
+prefix + C-w
+     |
+     +-- Prompts: branch name, topic name
+     +-- git worktree add ~/.worktrees/<repo>/<topic>  <branch>
+     +-- tmux new-session -s <repo>-<topic>  -c <worktree-path>
+     +-- tmux send-keys  "<agent-cmd>"  (if auto-agent = on)
+     +-- Saves to .worktree-sessions.json
 ```
 
-### Agent Configuration
+**Metadata** persists at `~/.tmux/plugins/tmux-worktree-agent/.worktree-sessions.json`. Each entry stores repo, topic, branch, worktree path, main repo path, creation time, and description.
 
-**Use different AI agents:**
+**Session names** follow the format `<repo>-<topic>`. Topic names are sanitized: lowercased, `/` replaced with `-`, spaces removed.
+
+**Worktree paths** follow `<@worktree-path>/<repo>/<topic>/`.
+
+---
+
+## Optional Integrations
+
+### Status bar -- repo name in `status-left`
+
+`scripts/status-repo.sh` returns the repo name for the current session (falls back to session name for non-plugin sessions).
+
+```tmux
+set -g status-left '#(~/.tmux/plugins/tmux-worktree-agent/scripts/status-repo.sh) '
+```
+
+`scripts/status-agents.sh` is **automatically appended** to `status-right` when the plugin loads -- no manual configuration needed.
+
+### Window auto-renaming
+
+`scripts/auto-rename-windows.sh` renames windows to `<agent>:<branch>` (e.g., `claude:feature/auth`) by inspecting child processes in each pane.
+
+```tmux
+# Option A: periodic via status bar
+set -g status-right '#(~/.tmux/plugins/tmux-worktree-agent/scripts/auto-rename-windows.sh > /dev/null 2>&1; echo)'
+
+# Option B: on-demand via tmux hook
+set-hook -g session-window-renamed "run '~/.tmux/plugins/tmux-worktree-agent/scripts/auto-rename-windows.sh'"
+```
+
+**Performance note:** This scans `pgrep`/`ps` for every pane on each refresh. Keep `status-interval` at 5s or higher. Disable tmux's built-in auto-rename to prevent conflicts:
+
+```tmux
+set -g allow-rename off
+set -wg automatic-rename off
+```
+
+### Shell banner and description prompt
+
+`scripts/shell-init.sh` displays a context banner on shell startup in plugin-managed sessions and prompts for a description if one hasn't been set.
+
+Add to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-# Claude Code (default)
-set -g @worktree-agent-cmd 'claude'
+source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
+```
 
-# Gemini Code
-set -g @worktree-agent-cmd 'gemini code'
+Example banner:
 
-# OpenCode
+```
++-- Worktree Session ----------------------------------------+
+| Repo:   my-project                                         |
+| Branch: feature/auth                                       |
+| Topic:  oauth-impl                                         |
+|                                                            |
+| Implement OAuth2 with GitHub and Google                    |
++------------------------------------------------------------+
+```
+
+---
+
+## Agent Support
+
+| Agent | `@worktree-agent-cmd` | Notes |
+|---|---|---|
+| Claude Code | `claude` | Default |
+| Gemini | `gemini` | |
+| OpenCode | `opencode` | |
+| Codex | `codex` | |
+| Aider | `aider` | |
+| Any CLI tool | `<command>` | Launched via `tmux send-keys` -- works with any interactive CLI |
+
+```tmux
+# Example: use opencode, prompt before launching
 set -g @worktree-agent-cmd 'opencode'
-
-# Codex
-set -g @worktree-agent-cmd 'codex'
-
-# No agent (manual workflow)
-set -g @worktree-auto-agent 'off'
-
-# Prompt each time
 set -g @worktree-auto-agent 'prompt'
 ```
 
-**Agent behavior:**
+If the agent binary is not found in `PATH`, the plugin warns but still creates the session so you can launch manually.
 
-```bash
-# Auto-launch agent when creating session (default)
-set -g @worktree-auto-agent 'on'
-
-# Never launch agent
-set -g @worktree-auto-agent 'off'
-
-# Ask each time
-set -g @worktree-auto-agent 'prompt'
-```
-
-### Storage Location
-
-```bash
-# Custom worktree location (default: ~/.worktrees)
-set -g @worktree-path '~/projects/worktrees'
-
-# Worktrees will be created at:
-# ~/projects/worktrees/<repo-name>/<topic>/
-```
-
-## Architecture
-
-### Directory Structure
-
-```
-~/.worktrees/
-└── myrepo/
-    ├── feature-auth/       # Worktree for feature/auth
-    ├── bugfix-login/       # Worktree for bugfix/login
-    └── testing-oauth/      # Worktree for feature/auth (different topic)
-```
-
-### Metadata
-
-Session metadata stored in: `~/.tmux/plugins/tmux-worktree-agent/.worktree-sessions.json`
-
-```json
-{
-  "myrepo-feature-auth": {
-    "repo": "myrepo",
-    "topic": "feature-auth",
-    "branch": "feature/auth",
-    "worktree_path": "/Users/you/.worktrees/myrepo/feature-auth",
-    "main_repo_path": "/Users/you/projects/myrepo",
-    "created_at": "2026-01-18T15:30:00Z",
-    "agent_running": true,
-    "description": "Implementing OAuth2 authentication with social login providers"
-  }
-}
-```
-
-## Examples
-
-### Multi-Agent Workflow
-
-```bash
-# Terminal 1: Working on authentication
-prefix + C-w
-Branch: feature/auth
-Topic: oauth-impl
-# Now in: myrepo-oauth-impl with Claude running
-
-# Terminal 2: Testing a fix
-prefix + W  (on bugfix/login branch)
-Topic: testing-fix
-# Now in: myrepo-testing-fix with Claude running
-
-# Terminal 3: Exploring refactor
-prefix + C-w
-Branch: refactor/database
-Topic: schema-changes
-# Now in: myrepo-schema-changes with Claude running
-
-# Switch between them instantly:
-prefix + w
-# Fuzzy search, pick one, press Enter
-```
-
-### Working Without Agents
-
-```bash
-# Disable auto-agent
-set -g @worktree-auto-agent 'off'
-
-# Or when creating:
-prefix + C-w
-Branch: experiment/new-idea
-Topic: spike
-# Session created, no agent launched
-# Work manually or launch agent later
-```
-
-## Scrolling in Popups
-
-Popup windows now support scrolling for better visibility:
-
-### Automatic Scrolling (Less Pager)
-Most popups use `less` for automatic scrolling:
-- **↑/↓ or j/k**: Scroll line by line
-- **Space/b**: Page down/up
-- **Mouse wheel**: Scroll (if mouse enabled)
-- **q**: Exit
-
-### Tmux Copy Mode
-For any popup, use tmux's copy mode:
-- **Ctrl-b [**: Enter copy mode (use your prefix)
-- **↑/↓ arrows**: Scroll
-- **Page Up/Down**: Scroll by page
-- **q**: Exit copy mode
-
-### Popup Sizes
-All popups now use larger sizes (85-95%) for maximum visibility.
-
-See [docs/SCROLLING.md](docs/SCROLLING.md) for detailed scrolling guide.
+---
 
 ## Troubleshooting
 
-### Agent command not found
+**Input prompts not responding in popups** -- All prompts read from `/dev/tty`. If a custom wrapper closes stdin, prompts will hang. Run plugin scripts directly from keybindings.
 
-**Symptom:** Warning "Agent command 'claude' not found"
+**Keybindings silently do nothing** -- `display-popup` requires tmux 3.2+. Check with `tmux -V`.
 
-**Solution:**
-- Ensure agent is installed and in PATH
-- Or change to available agent: `set -g @worktree-agent-cmd 'your-agent'`
-- Or disable auto-launch: `set -g @worktree-auto-agent 'off'`
+**Sessions appear in browser but don't exist** -- Run `prefix + R` (reconcile). Stale metadata is auto-cleaned on browser open.
 
-### Orphaned worktrees
+**Cannot create worktree -- branch conflict** -- Git doesn't allow the same branch in two worktrees. Use a different branch or `prefix + W` for a new topic on the same base.
 
-**Symptom:** Worktrees exist but sessions don't
+**Path expansion not working** -- Set `@worktree-path` in `tmux.conf` before the plugin loads.
 
-**Solution:**
-```bash
-prefix + R          # Reconcile
-prefix + w          # Browse, select orphaned worktree
-Enter               # Create session for it
-```
-
-### Stale metadata
-
-**Symptom:** Sessions appear in browser but don't exist
-
-**Solution:**
-```bash
-prefix + R          # Auto-cleans stale entries
-```
-
-### Permission issues
-
-**Symptom:** Cannot create worktree
-
-**Solution:**
-- Check write permissions on worktree path
-- Ensure git repository is accessible
-- Verify worktree path: `echo ${WORKTREE_PATH:-$HOME/.worktrees}`
-
-## Compatibility
-
-- **OS**: Linux, macOS, WSL2
-- **Shell**: bash, zsh
-- **tmux version**: 3.0+ (3.2+ for popup support)
-- **Works with**: TPM, catppuccin-tmux, tmux-fzf, and other plugins
-
-## Status Line Integration
-
-Get session info for your status line:
-
-```bash
-# In tmux.conf status-right
-set -g status-right '#(~/.tmux/plugins/tmux-worktree-agent/scripts/session-info.sh "#{session_name}" "short")'
-
-# Formats:
-# icon         -> 🌳
-# branch       -> feature/auth
-# topic        -> oauth-impl
-# description  -> Implementing OAuth2 authentication...
-# short        -> 🌳 feature/auth
-# full         -> 🌳 myrepo/oauth-impl (feature/auth)
-# status-line  -> [myrepo-oauth-impl] 🌳 feature/auth
-```
-
-## Development
-
-### Project Structure
-
-```
-tmux-worktree-agent/
-├── worktree-agent.tmux          # TPM entry point
-├── scripts/
-│   ├── create-worktree.sh       # Create worktree + session
-│   ├── browse-sessions.sh       # fzf browser
-│   ├── kill-worktree.sh         # Cleanup
-│   ├── session-info.sh          # Get metadata
-│   ├── session-description.sh   # Manage session descriptions
-│   ├── shell-init.sh            # Shell integration for banners
-│   ├── reconcile.sh             # Fix orphaned states
-│   ├── window-pane-ops.sh       # Window/pane operations popup
-│   └── utils.sh                 # Shared utilities
-├── lib/
-│   └── metadata.sh              # JSON metadata manager
-└── docs/
-    └── plans/
-        └── 2026-01-18-worktree-agent-design.md
-```
-
-### Testing
-
-See design document for comprehensive testing checklist.
+---
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Test thoroughly
-4. Submit a pull request
-
-## Credits
-
-Built for developers who multitask with AI coding agents.
-
-Inspired by the workflow of managing multiple Claude Code instances across different git worktrees.

@@ -90,12 +90,14 @@ build_topology_lines() {
             has_session=true
         fi
 
-        # Check if branch has been merged into main (existing or deleted)
+        # Check if branch has been merged into base branch (existing or deleted)
         local is_merged=false
         if [ -n "$repo_path" ]; then
-            if git -C "$repo_path" branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+            local base_branch
+            base_branch=$(get_default_branch "$repo_path")
+            if git -C "$repo_path" branch --merged "$base_branch" 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
                 is_merged=true
-            elif git -C "$repo_path" log --merges --oneline main 2>/dev/null | grep -q "Merge branch '${branch_name}'"; then
+            elif git -C "$repo_path" log --merges --oneline "$base_branch" 2>/dev/null | grep -q "Merge branch '${branch_name}'"; then
                 is_merged=true
             fi
         fi

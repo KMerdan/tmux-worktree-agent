@@ -17,6 +17,10 @@ build_merge_prompt() {
     local shared_dir
     shared_dir="$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")/${repo_name}/.shared"
 
+    # Detect base branch for this repo
+    local base_branch
+    base_branch=$(get_default_branch "$repo_path")
+
     # Collect active sessions with work to review
     local branch_status=""
     local broadcasts=""
@@ -31,16 +35,16 @@ build_merge_prompt() {
             wt_path=$(get_session_field "$session" "worktree_path")
             topic=$(get_session_field "$session" "topic")
 
-            # Check if branch has actual commits ahead of main
+            # Check if branch has actual commits ahead of base branch
             local has_commits="no"
             local merged="no"
             if [ -n "$branch" ]; then
                 cd "$repo_path" 2>/dev/null
                 local ahead
-                ahead=$(git log --oneline "main..${branch}" 2>/dev/null | wc -l | tr -d ' ')
+                ahead=$(git log --oneline "${base_branch}..${branch}" 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$ahead" -gt 0 ]; then
                     has_commits="yes"
-                    if git branch --merged main 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch"; then
+                    if git branch --merged "$base_branch" 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch"; then
                         merged="yes"
                     fi
                 fi
@@ -87,7 +91,7 @@ $(cat "$f")
     fi
 
     cat <<PROMPT
-Review the completed task broadcasts and merge their branches into main in the correct dependency order.
+Review the completed task broadcasts and merge their branches into ${base_branch} in the correct dependency order.
 
 ## Current State
 
@@ -106,8 +110,8 @@ ${broadcasts}
 2. **Read the task.md** (in the repo root) to understand dependency order (\`**Depends On**\` / \`**Blocks**\` fields)
 3. **For each completed task** (has a broadcast), in dependency order:
    a. Check if the worktree has uncommitted changes — if so, review and commit them first
-   b. Fact-check: \`git diff main\` on the worktree branch and verify it matches the broadcast claims
-   c. If correct, merge: \`git merge <branch> --no-edit\` from main
+   b. Fact-check: \`git diff ${base_branch}\` on the worktree branch and verify it matches the broadcast claims
+   c. If correct, merge: \`git merge <branch> --no-edit\` from ${base_branch}
    d. If incorrect or suspicious, skip it and explain why
 4. **After merging**, kill completed sessions with the plugin's kill script or tmux kill-session
 5. **Report** what was merged, what was skipped, and what's still pending
