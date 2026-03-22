@@ -182,74 +182,6 @@ clean_orphaned_metadata() {
     echo "$cleaned"
 }
 
-# Get orphaned sessions (session exists, worktree deleted)
-get_orphaned_sessions() {
-    if [ ! -f "$METADATA_FILE" ]; then
-        echo "[]"
-        return 0
-    fi
-
-    local orphaned=()
-    local sessions
-    sessions=$(list_sessions)
-
-    for session in $sessions; do
-        local worktree_path
-        worktree_path=$(get_session_field "$session" "worktree_path")
-
-        # Session exists but worktree doesn't
-        if tmux has-session -t "$session" 2>/dev/null && [ ! -d "$worktree_path" ]; then
-            orphaned+=("$session")
-        fi
-    done
-
-    printf '%s\n' "${orphaned[@]}"
-}
-
-# Get orphaned worktrees (worktree exists, no session)
-get_orphaned_worktrees() {
-    local repo_path="$1"
-    local worktree_base
-    worktree_base=$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")
-
-    if [ ! -d "$worktree_base" ]; then
-        echo "[]"
-        return 0
-    fi
-
-    local orphaned=()
-    local repo_name
-    repo_name=$(basename "$repo_path")
-
-    # Get all worktrees for this repo from git
-    if [ -d "$repo_path" ]; then
-        cd "$repo_path" || return 1
-
-        local worktrees
-        worktrees=$(git worktree list --porcelain | awk '/^worktree / {print $2}')
-
-        for wt_path in $worktrees; do
-            # Skip main worktree
-            if [ "$wt_path" = "$repo_path" ]; then
-                continue
-            fi
-
-            # Check if in our managed location
-            if [[ "$wt_path" == "$worktree_base"* ]]; then
-                # Check if we have a session for this worktree
-                local session
-                session=$(find_session_by_path "$wt_path")
-
-                if [ -z "$session" ] || ! tmux has-session -t "$session" 2>/dev/null; then
-                    orphaned+=("$wt_path")
-                fi
-            fi
-        done
-    fi
-
-    printf '%s\n' "${orphaned[@]}"
-}
-
 # Count sessions
 count_sessions() {
     if [ ! -f "$METADATA_FILE" ]; then
@@ -258,18 +190,6 @@ count_sessions() {
     fi
 
     jq 'length' "$METADATA_FILE"
-}
-
-# Export all metadata as formatted text
-export_metadata() {
-    if [ ! -f "$METADATA_FILE" ]; then
-        echo "No sessions"
-        return 0
-    fi
-
-    jq -r 'to_entries[] |
-        "\(.key)\n  Repo: \(.value.repo)\n  Branch: \(.value.branch)\n  Path: \(.value.worktree_path)\n  Created: \(.value.created_at)\n"' \
-        "$METADATA_FILE"
 }
 
 # Update session description
@@ -317,23 +237,3 @@ get_session_agent() {
        "$METADATA_FILE"
 }
 
-# Backup metadata
-backup_metadata() {
-    if [ -f "$METADATA_FILE" ]; then
-        local backup_file="$METADATA_FILE.backup-$(date +%Y%m%d-%H%M%S)"
-        cp "$METADATA_FILE" "$backup_file"
-        echo "$backup_file"
-    fi
-}
-
-# Restore metadata from backup
-restore_metadata() {
-    local backup_file="$1"
-
-    if [ -f "$backup_file" ]; then
-        cp "$backup_file" "$METADATA_FILE"
-        return 0
-    else
-        return 1
-    fi
-}

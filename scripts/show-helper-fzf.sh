@@ -79,55 +79,6 @@ generate_command_list() {
     echo "ref|📖 Copy mode: open in vim|C-a [ → v → C-o|Select filepath and open in vim split, or C-o without selection opens current dir"
 }
 
-# Generate preview based on type
-generate_preview() {
-    local line="$1"
-
-    # Skip separator lines
-    if [ "$line" = "---" ]; then
-        echo ""
-        return
-    fi
-
-    IFS='|' read -r type display description command <<< "$line"
-
-    if [ "$type" = "exec" ]; then
-        # Executable command preview
-        echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${GREEN}▶ EXECUTABLE COMMAND${NC}"
-        echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        echo -e "${YELLOW}Command:${NC} $command"
-        echo ""
-        echo -e "${BLUE}What it does:${NC}"
-        echo -e "$description"
-        echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}💡 How to use:${NC}"
-        echo -e "   • Press ${GREEN}Enter${NC} to execute"
-        echo -e "   • Output will be shown below"
-        echo -e "   • Press any key to return"
-        echo ""
-        echo -e "${GRAY}This command is read-only and won't modify"
-        echo -e "your repository - it's safe to run${NC}"
-    else
-        # Reference item preview
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${BLUE}📖 REFERENCE - KEYBINDING${NC}"
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        echo -e "${YELLOW}Keybinding:${NC} $(echo "$display" | sed 's/📖 //')"
-        echo ""
-        echo -e "${BLUE}What it does:${NC}"
-        echo -e "$description"
-        echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${GRAY}💡 This is a reference only${NC}"
-        echo -e "${GRAY}   Use this keybinding in your tmux session${NC}"
-        echo -e "${GRAY}   (Not executable from this helper)${NC}"
-    fi
-}
-
 # Execute git command with better output
 execute_git_command() {
     local command="$1"
@@ -275,8 +226,5 @@ PREVIEW_EOF
         fi
     fi
 }
-
-# Export function for preview
-export -f generate_preview
 
 main

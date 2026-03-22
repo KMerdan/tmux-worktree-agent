@@ -268,17 +268,18 @@ spawn_task_worktrees() {
         # Spawn session (auto_switch=false for batch mode)
         spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
             "$branch_name" "$worktree_path" "$repo_path" "$title" "false"
+        local spawn_rc=$?
+
+        if [ $spawn_rc -ne 0 ]; then
+            failed_tasks+=("$task_id (session error)")
+            continue
+        fi
 
         # Write agent config file after spawn (now we know which agent was chosen)
         local agent_cmd_used
         agent_cmd_used=$(get_session_field "$session_name" "agent_cmd" 2>/dev/null)
         if [ -n "$agent_cmd_used" ]; then
             write_agent_config "$worktree_path" "$agent_cmd_used" "$task_id" "$branch_filename"
-        fi
-
-        if [ $? -ne 0 ]; then
-            failed_tasks+=("$task_id (session error)")
-            continue
         fi
 
         created_sessions+=("$session_name")

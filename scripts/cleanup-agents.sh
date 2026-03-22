@@ -240,7 +240,7 @@ kill_old_claude_all() {
     echo -e "${YELLOW}Only current session processes will be protected.${NC}"
     echo ""
     echo -ne "${RED}Are you SURE? Type 'yes' to continue: ${NC}"
-    read -r confirm
+    read -r confirm < /dev/tty
 
     if [ "$confirm" != "yes" ]; then
         echo "Cancelled."
@@ -335,14 +335,14 @@ main_interactive() {
 
     local choice
     show_menu
-    read -r choice
+    read -r choice < /dev/tty
     echo ""
 
     case "$choice" in
         1)
             show_old_claude_processes
             echo -ne "${YELLOW}Continue with SAFE cleanup? (y/N): ${NC}"
-            read -r confirm
+            read -r confirm < /dev/tty
             if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 kill_old_claude_safe
             else
@@ -352,7 +352,7 @@ main_interactive() {
         2)
             show_old_claude_processes
             echo -ne "${RED}Continue with RISKY cleanup? (y/N): ${NC}"
-            read -r confirm
+            read -r confirm < /dev/tty
             if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 kill_old_claude_all
             else
@@ -362,7 +362,7 @@ main_interactive() {
         3)
             show_orphaned_zsh
             echo -ne "${YELLOW}Continue with cleanup? (y/N): ${NC}"
-            read -r confirm
+            read -r confirm < /dev/tty
             if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 kill_orphaned_zsh
             else
@@ -391,7 +391,7 @@ main_interactive() {
 
     echo ""
     echo -e "${GRAY}Press any key to close...${NC}"
-    read -n 1 -s
+    read -n 1 -s < /dev/tty
 }
 
 main_interactive

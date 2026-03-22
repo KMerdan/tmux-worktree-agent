@@ -425,30 +425,6 @@ get_current_session() {
     tmux display-message -p '#S'
 }
 
-# Display in tmux popup or split
-display_in_tmux() {
-    local command="$1"
-
-    # Use popup if tmux version supports it (3.2+)
-    if tmux display-message -p '#{version}' | awk '{exit !($1 >= 3.2)}'; then
-        tmux display-popup -E -w 90% -h 90% "$command"
-    else
-        # Fallback to split pane
-        tmux split-window -h -l 50% "$command"
-    fi
-}
-
-# Source metadata library
-source_metadata_lib() {
-    local metadata_lib="$PLUGIN_DIR/lib/metadata.sh"
-    if [ -f "$metadata_lib" ]; then
-        source "$metadata_lib"
-    else
-        log_error "Metadata library not found: $metadata_lib"
-        return 1
-    fi
-}
-
 # Map agent command to its config filename
 # claude -> CLAUDE.md, codex -> AGENTS.md, gemini -> GEMINI.md, etc.
 get_agent_config_filename() {

@@ -172,7 +172,7 @@ main() {
     prompt=$(build_merge_prompt "$repo_path" "$repo_name")
 
     if [ -z "$prompt" ]; then
-        log_warn "No broadcasts found in .shared/broadcasts/"
+        log_warn "No sessions have commits or uncommitted work"
         log_info "Nothing to merge"
         sleep 1.5
         exit 0

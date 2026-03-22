@@ -47,7 +47,43 @@ main() {
     topic=$(get_session_field "$session_name" "topic")
     branch=$(get_session_field "$session_name" "branch")
 
+    # Detect if this is a main repo session (not a worktree)
+    local is_main_repo=false
+    if [ "$worktree_path" = "$main_repo_path" ]; then
+        is_main_repo=true
+    fi
+
     # Show what will be deleted
+    if $is_main_repo; then
+        echo "╭─ Session to Unregister ────────────────────╮"
+        echo "│ Session: $session_name"
+        echo "│ Branch:  $branch"
+        echo "│ Topic:   $topic"
+        echo "│ Path:    $worktree_path (main repo, kept)"
+        echo "╰────────────────────────────────────────────╯"
+        echo ""
+
+        if ! confirm "Unregister session? (metadata only, repo untouched)"; then
+            log_info "Cancelled"
+            exit 0
+        fi
+
+        # Kill tmux session if running
+        if session_exists "$session_name"; then
+            log_info "Killing tmux session..."
+            tmux kill-session -t "$session_name" 2>/dev/null || true
+            log_success "Session killed"
+        fi
+
+        # Delete metadata only
+        log_info "Cleaning metadata..."
+        delete_session "$session_name"
+        log_success "Metadata cleaned"
+
+        log_success "Unregistered: $session_name"
+        return 0
+    fi
+
     echo "╭─ Session to Delete ───────────────────────╮"
     echo "│ Session: $session_name"
     echo "│ Branch:  $branch"
