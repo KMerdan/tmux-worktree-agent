@@ -41,60 +41,55 @@ generate_preview() {
     description=$(echo "$session_data" | jq -r '.description // empty')
     agent_cmd=$(echo "$session_data" | jq -r '.agent_cmd // empty')
 
-    # Display session info
-    echo "╭─ Session Info ────────────────────────────╮"
-    echo "│ Session: $session_name"
-    echo "│ Repo:    $repo"
-    echo "│ Branch:  $branch"
-    if [ -n "$agent_cmd" ]; then
-        echo "│ Agent:   $agent_cmd"
-    fi
-    echo "│ Created: $created_at"
+    # Display session info (no box — full width, no truncation)
+    echo "Session:  $session_name"
+    echo "Repo:     $repo"
+    echo "Branch:   $branch"
+    echo "Path:     $worktree_path"
+    [ -n "$agent_cmd" ] && echo "Agent:    $agent_cmd"
+    echo "Created:  $created_at"
 
     if [ -n "$description" ]; then
-        # Truncate description if too long (max 100 chars)
-        local desc_display="$description"
-        if [ ${#description} -gt 100 ]; then
-            desc_display="${description:0:97}..."
-        fi
-        echo "│"
-        echo "│ Description:"
-        echo "│   $desc_display"
-    fi
-
-    echo "╰───────────────────────────────────────────╯"
-    echo ""
-
-    # Check session status
-    if tmux has-session -t "$session_name" 2>/dev/null; then
-        echo "✓ Session active"
-
-        # Show windows
         echo ""
-        echo "Windows:"
-        tmux list-windows -t "$session_name" -F "  #I: #W"
-    else
-        echo "⚠ Session not running"
+        echo "Description:"
+        echo "  $description"
     fi
 
     echo ""
+    echo "─────────────────────────────────────────────────────────────"
 
-    # Check worktree status
+    # Session status
+    if tmux has-session -t "$session_name" 2>/dev/null; then
+        echo "Session: active"
+        tmux list-windows -t "$session_name" -F "  Window #I: #W" 2>/dev/null
+    else
+        echo "Session: not running"
+    fi
+
+    # Worktree status
     if [ -d "$worktree_path" ]; then
-        echo "✓ Worktree exists: $worktree_path"
-
-        # Show git status if directory exists
+        echo "Worktree: exists"
         if cd "$worktree_path" 2>/dev/null; then
-            echo ""
-            echo "Git Status:"
-            git status --short 2>/dev/null | head -10 | sed 's/^/  /'
-
-            if [ "$(git status --short 2>/dev/null | wc -l)" -gt 10 ]; then
-                echo "  ..."
+            local changed
+            changed=$(git status --short 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$changed" -gt 0 ]; then
+                echo ""
+                echo "Git changes ($changed files):"
+                git status --short 2>/dev/null | head -20 | sed 's/^/  /'
+                if [ "$changed" -gt 20 ]; then
+                    echo "  ... and $((changed - 20)) more"
+                fi
+            else
+                echo "Git: clean"
             fi
+
+            # Show recent commits on this branch
+            echo ""
+            echo "Recent commits:"
+            git log --oneline -5 2>/dev/null | sed 's/^/  /'
         fi
     else
-        echo "⚠ Worktree deleted"
+        echo "Worktree: DELETED"
     fi
 }
 
@@ -214,14 +209,26 @@ build_session_list() {
             agent_name="─"
         fi
 
-        # Format: session_status agent_status session agent branch path
-        printf "%-2s %-2s %-35s %-10s %-25s %s\n" \
+        # Get description (truncate for list display)
+        local description
+        description=$(echo "$session_data" | jq -r '.description // empty')
+        if [ ${#description} -gt 60 ]; then
+            description="${description:0:57}..."
+        fi
+        if [ -z "$description" ]; then
+            description="\033[2m(no description)\033[0m"
+        else
+            description="\033[0;36m$description\033[0m"
+        fi
+
+        # Format: status agent session branch description
+        printf "%-2s %-2s %-30s %-8s %-22s %b\n" \
             "$status_icon" \
             "$agent_status" \
             "$session" \
             "$agent_name" \
             "$branch" \
-            "$worktree_path"
+            "$description"
     done
 }
 
@@ -247,15 +254,29 @@ main() {
         exit 0
     fi
 
+    # Write preview script to tmpfile (avoids quoting issues with bash -c)
+    local preview_script
+    preview_script=$(mktemp)
+    cat > "$preview_script" <<PREVIEW_EOF
+#!/usr/bin/env bash
+source "$SCRIPT_DIR/utils.sh"
+source "$PLUGIN_DIR/lib/metadata.sh"
+$(declare -f generate_preview)
+generate_preview "\$1"
+PREVIEW_EOF
+    chmod +x "$preview_script"
+    trap "rm -f '$preview_script'" EXIT
+
     # fzf interface
     local selected
     selected=$(echo "$session_list" | fzf \
         --ansi \
-        --header="Worktree Sessions ($(count_sessions) active) | [S][A] Session Agent Branch | Enter: switch | Ctrl-d: delete | Tab: toggle preview" \
+        --header="[S][A] Session Agent Branch | Enter: switch | Ctrl-d: delete | Tab: preview" \
         --header-lines=0 \
         --layout=reverse \
-        --preview="bash -c 'source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && generate_preview {3}'" \
-        --preview-window=right:60%:wrap \
+        --height=100% \
+        --preview="bash '$preview_script' {3}" \
+        --preview-window=bottom:70%:wrap:hidden \
         --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {3}")' \
         --bind='ctrl-r:reload(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && '"$(declare -f get_agent_status; declare -f build_session_list)"' && build_session_list")' \
         --bind='tab:toggle-preview' \

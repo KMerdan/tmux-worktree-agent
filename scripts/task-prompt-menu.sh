@@ -231,15 +231,85 @@ ${changed_files}
 }
 
 # ---------------------------------------------------------------------------
+# Prompt: Simplify project (first-principles subtraction)
+# ---------------------------------------------------------------------------
+prompt_simplify_project() {
+    # Gather project stats
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
+
+    local repo_path
+    repo_path=$(cd "$pane_cwd" && git rev-parse --show-toplevel 2>/dev/null)
+    if [ -z "$repo_path" ]; then
+        log_error "Not in a git repository"
+        exit 1
+    fi
+
+    local repo_name
+    repo_name=$(basename "$repo_path")
+
+    # Collect file/line stats for context
+    local file_stats
+    file_stats=$(cd "$repo_path" && find . -name '*.sh' -o -name '*.py' -o -name '*.ts' -o -name '*.js' -o -name '*.go' -o -name '*.rs' -o -name '*.rb' -o -name '*.lua' 2>/dev/null \
+        | grep -v node_modules | grep -v vendor | grep -v '.git/' \
+        | head -50 \
+        | while read -r f; do
+            lines=$(wc -l < "$f" 2>/dev/null | tr -d ' ')
+            echo "  $lines $f"
+        done | sort -rn)
+
+    local text
+    text="Analyze this project from a first-principles subtraction perspective.
+
+## Project
+**Repo**: ${repo_name}
+**Path**: ${repo_path}
+
+## File sizes (top files by line count)
+\`\`\`
+${file_stats}
+\`\`\`
+
+## Instructions
+
+First, state the core value proposition in ONE sentence — what does this project do that nothing else does?
+
+Then for EVERY module/script/component:
+
+1. **Line count** — how much code does it cost to maintain?
+2. **Core alignment** — does it directly serve the core value prop, or is it adjacent/nice-to-have?
+3. **Usage frequency** — how often does a real user actually trigger this? Daily? Weekly? Once ever?
+4. **Blast radius of deletion** — what breaks if removed? Is anything coupled to it?
+5. **Simpler alternative** — could the user achieve the same result with a 1-2 line command, an existing tool, or a README paragraph?
+
+Rank EVERY component from \"most deletable\" to \"least deletable.\"
+
+Ranking criteria (in order of weight):
+- Lines of code maintained relative to value delivered
+- Whether it solves a problem users ACTUALLY have vs a hypothetical one
+- Whether the same outcome is achievable with existing tools at negligible cost
+- How many other components depend on it (coupling)
+- Whether it introduces an entire new CATEGORY of responsibility that is not the project's job
+
+Be ruthless — if you're not recommending deleting at least 10% of the codebase, you're not looking hard enough.
+
+At the end, identify the ABSOLUTE ESSENTIAL set — the files without which the core value prop ceases to exist. Everything else is a deletion candidate.
+
+Present your findings as a ranked table, then give me your top 3 recommended deletions with the exact files and line savings."
+
+    send_prompt_to_agent "$text" "Simplify project prompt sent to agent"
+}
+
+# ---------------------------------------------------------------------------
 # Main menu
 # ---------------------------------------------------------------------------
 main() {
     local action
-    action=$(printf "Start sub-agent task\nGenerate task.md\nMerge completed tasks\nUpdate constraints" | fzf \
+    action=$(printf "Start sub-agent task\nGenerate task.md\nMerge completed tasks\nUpdate constraints\nSimplify project" | fzf \
         --ansi \
         --header="Task Prompts — select an action" \
         --layout=reverse \
-        --height=8 \
+        --height=9 \
         --no-preview \
         --bind='esc:cancel')
 
@@ -259,6 +329,9 @@ main() {
             ;;
         "Update constraints")
             prompt_update_constraints
+            ;;
+        "Simplify project")
+            prompt_simplify_project
             ;;
     esac
 }
