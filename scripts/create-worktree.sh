@@ -179,18 +179,31 @@ main() {
             exit 1
         fi
     else
-        # Selected existing branch → ask: use directly or create new branch from it
+        # Selected existing branch — check if already checked out
+        local already_checked_out=false
+        if git worktree list | grep -q "\[$branch_name\]"; then
+            already_checked_out=true
+        fi
+
+        # Build menu based on whether branch is available for worktree
         local branch_action
-        branch_action=$(choose "Branch '$branch_name' exists. How to use it?" \
-            "Use directly" "Create wt/$topic from it" "Cancel")
+        if $already_checked_out; then
+            branch_action=$(choose "Branch '$branch_name' is already checked out." \
+                "Session only (no worktree)" "Create wt/$topic from it" "Cancel")
+        else
+            branch_action=$(choose "Branch '$branch_name' exists. How to use it?" \
+                "Use directly" "Create wt/$topic from it" "Session only (no worktree)" "Cancel")
+        fi
 
         case "$branch_action" in
+            "Session only (no worktree)")
+                # Create tmux session pointing at current repo, no worktree
+                log_info "Creating session at repo root (no worktree)"
+                spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
+                    "$branch_name" "$repo_path" "$repo_path" "" "true"
+                exit 0
+                ;;
             "Use directly")
-                # Check if branch is already checked out in another worktree
-                if git worktree list | grep -q "\[$branch_name\]"; then
-                    log_error "Branch '$branch_name' is already checked out in another worktree"
-                    exit 1
-                fi
                 if ! git worktree add "$worktree_path" "$branch_name"; then
                     log_error "Failed to create worktree for branch '$branch_name'"
                     log_info "Git error shown above"
