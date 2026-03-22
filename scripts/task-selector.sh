@@ -29,22 +29,17 @@ browse_markdown_files() {
         find_cmd="find '$root' -type f -name '*.md' -not -path '*/.git/*' -not -path '*/node_modules/*' 2>/dev/null | sort"
     fi
 
-    # Build preview command
-    local preview_cmd
-    if command_exists bat; then
-        preview_cmd="bat --style=numbers --color=always \"${root}/{}\""
-    else
-        preview_cmd="cat \"${root}/{}\""
-    fi
-
+    # Feed full absolute paths to fzf so the preview can open them directly.
+    # PREVIEW_ROOT env var avoids quoting issues with special chars in paths.
     local selected
     selected=$(eval "$find_cmd" | \
         sed "s|^$root/||" | \
-        fzf \
+        PREVIEW_ROOT="$root" fzf \
             --ansi \
+            --height=100% \
             --header="Select a task file (.md) | Enter: select | Esc: cancel" \
             --layout=reverse \
-            --preview="$preview_cmd" \
+            --preview='if command -v bat >/dev/null 2>&1; then bat --style=numbers --color=always -- "$PREVIEW_ROOT"/{}; else cat -- "$PREVIEW_ROOT"/{}; fi' \
             --preview-window=right:60%:wrap \
             --bind='esc:cancel')
 
@@ -170,6 +165,7 @@ select_tasks() {
     selected=$(echo -e "$formatted" | fzf \
         --ansi \
         --multi \
+        --height=100% \
         --header="$(printf '═══ Task Topology ═══  ● active  ○ pending  ✓ done  ✗ dead\n\nTab: toggle  Enter: confirm  Esc: cancel')" \
         --layout=reverse \
         --preview="bash '$preview_script' {} '$task_file'" \

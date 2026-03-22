@@ -264,6 +264,7 @@ select_branch() {
     local selected
     selected=$(echo "$formatted_branches" | fzf \
         --ansi \
+        --height=100% \
         --header="↑↓ Navigate | Enter: Select | Type: Filter/New Branch | Esc: Cancel" \
         --layout=reverse \
         --preview="cd '$repo_path' && git log --oneline --graph --color=always {1} 2>/dev/null | head -20" \
@@ -343,7 +344,7 @@ select_agent() {
         --ansi \
         --header="Select agent | Enter: Select | Esc: Cancel" \
         --layout=reverse \
-        --height=~10 \
+        --height=100% \
         --no-info \
         --bind='esc:cancel')
 

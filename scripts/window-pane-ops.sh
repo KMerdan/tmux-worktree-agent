@@ -26,7 +26,7 @@ choose_action() {
         "Decompose panes into windows" | \
         fzf \
             --layout=reverse \
-            --height=~8 \
+            --height=100% \
             --header="Window/Pane Ops | Enter: select | Esc: cancel" \
             --no-info \
             --bind='esc:cancel'
@@ -63,6 +63,7 @@ select_target_window() {
 
     selected=$(echo "$list" | fzf \
         --layout=reverse \
+        --height=100% \
         --header="Select target window | Enter: target | Esc: cancel" \
         --delimiter='|' \
         --with-nth=3,4,5 \
@@ -85,6 +86,7 @@ select_source_windows() {
     selected=$(echo "$list" | fzf \
         --multi \
         --layout=reverse \
+        --height=100% \
         --header="Select source windows | Tab: mark | Enter: merge into target | Esc: cancel" \
         --delimiter='|' \
         --with-nth=3,4,5 \
@@ -199,6 +201,7 @@ decompose_selected_panes() {
     selected=$(build_pane_tree | fzf \
         --multi \
         --layout=reverse \
+        --height=100% \
         --delimiter=$'\t' \
         --with-nth=3 \
         --header="Select panes (or window rows for all panes) | Tab: mark | Enter: break into windows | Esc: cancel" \

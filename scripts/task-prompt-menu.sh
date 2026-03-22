@@ -309,7 +309,7 @@ main() {
         --ansi \
         --header="Task Prompts — select an action" \
         --layout=reverse \
-        --height=9 \
+        --height=100% \
         --no-preview \
         --bind='esc:cancel')
 
