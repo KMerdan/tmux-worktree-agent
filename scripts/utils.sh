@@ -210,9 +210,12 @@ _choose_read() {
     done < /dev/tty
 }
 
-# Check if gum can be used (installed AND has TTY access)
+# Check if gum can be used (installed AND has a working TTY)
+# Note: [ -r /dev/tty ] checks permissions, not whether the device works.
+# We must actually try opening it to detect "Device not configured" errors.
+# The subshell suppresses bash's own redirect error message.
 _gum_available() {
-    command_exists gum && [ -r /dev/tty ] && [ -w /dev/tty ]
+    command_exists gum && (echo -n "" > /dev/tty) 2>/dev/null
 }
 
 # Prompt user (with fallback from gum to read)
@@ -221,7 +224,7 @@ prompt() {
     local default="${2:-}"
 
     if _gum_available; then
-        gum input --placeholder "$message" --value "$default" < /dev/tty
+        gum input --placeholder "$message" --value "$default"
     else
         _prompt_read "$message" "$default"
     fi
@@ -233,7 +236,7 @@ confirm() {
     local default="${2:-n}"
 
     if _gum_available; then
-        gum confirm "$message" < /dev/tty
+        gum confirm "$message"
         return $?
     else
         _confirm_read "$message"
@@ -247,7 +250,7 @@ choose() {
     local options=("$@")
 
     if _gum_available; then
-        gum choose --header "$prompt_msg" "${options[@]}" < /dev/tty
+        gum choose --header "$prompt_msg" "${options[@]}"
     else
         _choose_read "$prompt_msg" "${options[@]}"
     fi
