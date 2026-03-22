@@ -17,7 +17,14 @@ source "$PLUGIN_DIR/lib/metadata.sh"
 
 # Resolve current session name (named to avoid shadowing utils.sh get_current_session)
 resolve_current_session() {
-    # Try tmux first
+    # Prefer CALLER_SESSION set by keybinding (popup-safe)
+    # Guard against unexpanded tmux format strings (display-popup may not expand them)
+    if [ -n "${CALLER_SESSION:-}" ] && [[ "$CALLER_SESSION" != *'#{'* ]]; then
+        echo "$CALLER_SESSION"
+        return 0
+    fi
+
+    # Try tmux
     if [ -n "${TMUX:-}" ]; then
         tmux display-message -p '#S'
         return 0

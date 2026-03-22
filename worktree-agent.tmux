@@ -63,17 +63,21 @@ tmux set-environment -g WORKTREE_AUTO_AGENT "$auto_agent"
 tmux set-environment -g WORKTREE_PLUGIN_DIR "$CURRENT_DIR"
 
 # Set up keybindings (using larger popups for better visibility)
-tmux bind-key "$browser_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/browse-sessions.sh"
-tmux bind-key "$create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh"
-tmux bind-key "$quick_create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/create-worktree.sh --quick"
-tmux bind-key "$kill_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/kill-worktree.sh"
-tmux bind-key "$refresh_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/reconcile.sh"
-tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/show-helper-fzf.sh"
-tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
-tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
-tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
-tmux bind-key "$task_prompt_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-prompt-menu.sh"
-tmux bind-key "$register_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/register-session.sh"
+# CALLER_SESSION passes the real session name into popups, since
+# tmux display-message inside a popup may resolve to a different session.
+# We use "export CALLER_SESSION=...; exec script" so tmux expands #{session_name}
+# in the command string (display-popup -e does NOT expand formats).
+tmux bind-key "$browser_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/browse-sessions.sh"
+tmux bind-key "$create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/create-worktree.sh"
+tmux bind-key "$quick_create_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/create-worktree.sh --quick"
+tmux bind-key "$kill_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/kill-worktree.sh"
+tmux bind-key "$refresh_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/reconcile.sh"
+tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/show-helper-fzf.sh"
+tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/session-description.sh prompt"
+tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/window-pane-ops.sh"
+tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/task-selector.sh"
+tmux bind-key "$task_prompt_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/task-prompt-menu.sh"
+tmux bind-key "$register_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "export CALLER_SESSION='#{session_name}'; exec $CURRENT_DIR/scripts/register-session.sh"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"

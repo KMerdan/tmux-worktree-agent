@@ -483,8 +483,15 @@ switch_to_session() {
 }
 
 # Get current session name
+# CALLER_SESSION is set by keybindings, but display-popup may not expand
+# tmux formats in the shell command, leaving the literal '#{session_name}'.
+# Guard against that and fall back to display-message which works in popups.
 get_current_session() {
-    tmux display-message -p '#S'
+    if [ -n "${CALLER_SESSION:-}" ] && [[ "$CALLER_SESSION" != *'#{'* ]]; then
+        echo "$CALLER_SESSION"
+    else
+        tmux display-message -p '#S'
+    fi
 }
 
 # Map agent command to its config filename
