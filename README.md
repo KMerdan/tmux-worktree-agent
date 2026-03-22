@@ -116,7 +116,6 @@ All keybinds are customizable. Set any of these in `~/.tmux.conf` before the plu
 | `@worktree-kill-key` | `K` | Kill current worktree + session |
 | `@worktree-refresh-key` | `R` | Reconcile orphaned metadata |
 | `@worktree-description-key` | `D` | Edit session description |
-| `@worktree-cleanup-key` | `C` | Clean up old agent processes |
 | `@worktree-ops-key` | `O` | Window/pane operations popup |
 | `@worktree-task-selector-key` | `T` | Task batch-dispatch from Markdown |
 | `@worktree-task-prompt-key` | `G` | Task prompt menu (generate / merge / update) |
@@ -138,7 +137,6 @@ All keybinds are customizable. Set any of these in `~/.tmux.conf` before the plu
 | `prefix + A` | `register-session.sh` | Register current session into plugin metadata |
 | `prefix + T` | `task-selector.sh` | Parse tasks from Markdown, batch-spawn sessions |
 | `prefix + G` | `task-prompt-menu.sh` | Task prompt menu: start task, generate, merge, update |
-| `prefix + C` | `cleanup-agents.sh` | Interactive cleanup of stale agent processes |
 | `prefix + O` | `window-pane-ops.sh` | Window and pane layout operations |
 | `prefix + ?` | `show-helper-fzf.sh` | Help popup with one-key git quick-actions |
 

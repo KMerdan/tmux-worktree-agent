@@ -14,7 +14,6 @@ default_kill_key="K"
 default_refresh_key="R"
 default_helper_key="?"
 default_description_key="D"
-default_cleanup_key="C"
 default_ops_key="O"
 default_task_selector_key="T"
 default_task_prompt_key="G"
@@ -51,7 +50,6 @@ kill_key=$(get_tmux_option "@worktree-kill-key" "$default_kill_key")
 refresh_key=$(get_tmux_option "@worktree-refresh-key" "$default_refresh_key")
 helper_key=$(get_tmux_option "@worktree-helper-key" "$default_helper_key")
 description_key=$(get_tmux_option "@worktree-description-key" "$default_description_key")
-cleanup_key=$(get_tmux_option "@worktree-cleanup-key" "$default_cleanup_key")
 ops_key=$(get_tmux_option "@worktree-ops-key" "$default_ops_key")
 task_selector_key=$(get_tmux_option "@worktree-task-selector-key" "$default_task_selector_key")
 task_prompt_key=$(get_tmux_option "@worktree-task-prompt-key" "$default_task_prompt_key")
@@ -72,7 +70,6 @@ tmux bind-key "$kill_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path
 tmux bind-key "$refresh_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/reconcile.sh"
 tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/show-helper-fzf.sh"
 tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
-tmux bind-key "$cleanup_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/cleanup-agents.sh"
 tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
 tmux bind-key "$task_prompt_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-prompt-menu.sh"

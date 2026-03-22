@@ -59,7 +59,6 @@ INTERACTIVE_SCRIPTS=(
     "$PLUGIN_DIR/scripts/create-worktree.sh"
     "$PLUGIN_DIR/scripts/kill-worktree.sh"
     "$PLUGIN_DIR/scripts/reconcile.sh"
-    "$PLUGIN_DIR/scripts/cleanup-agents.sh"
     "$PLUGIN_DIR/scripts/register-session.sh"
     "$PLUGIN_DIR/scripts/session-description.sh"
     "$PLUGIN_DIR/scripts/merge-orchestrator.sh"
