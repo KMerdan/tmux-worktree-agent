@@ -12,6 +12,23 @@ source "$PLUGIN_DIR/lib/metadata.sh"
 # Brief pause on error so user can read messages before popup closes
 trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
 
+# Switch client away from target session so the popup survives the kill
+switch_away_if_needed() {
+    local target="$1"
+
+    [ -n "$TMUX" ] || return 0
+
+    local current_session
+    current_session=$(get_current_session)
+    [ "$current_session" = "$target" ] || return 0
+
+    local other_session
+    other_session=$(tmux list-sessions -F '#{session_name}' | grep -v "^$target$" | head -1 || true)
+    if [ -n "$other_session" ]; then
+        tmux switch-client -t "$other_session"
+    fi
+}
+
 # Main cleanup function
 main() {
     local session_name="$1"
@@ -33,6 +50,7 @@ main() {
         # Check if tmux session exists
         if session_exists "$session_name"; then
             if confirm "Kill tmux session anyway?"; then
+                switch_away_if_needed "$session_name"
                 tmux kill-session -t "$session_name"
                 log_success "Session killed"
             fi
@@ -71,6 +89,8 @@ main() {
             exit 0
         fi
 
+        switch_away_if_needed "$session_name"
+
         # Kill tmux session if running
         if session_exists "$session_name"; then
             log_info "Killing tmux session..."
@@ -104,23 +124,8 @@ main() {
         exit 0
     fi
 
-    local previous_session=""
-
-    # If we're in the session to be deleted, switch away first
-    if [ -n "$TMUX" ]; then
-        local current_session
-        current_session=$(get_current_session)
-
-        if [ "$current_session" = "$session_name" ]; then
-            # Get list of other sessions
-            local sessions
-            sessions=$(tmux list-sessions -F '#{session_name}' | grep -v "^$session_name$" | head -1 || true)
-
-            if [ -n "$sessions" ]; then
-                previous_session="$sessions"
-            fi
-        fi
-    fi
+    # Switch client away before killing so the popup (and this script) survives
+    switch_away_if_needed "$session_name"
 
     # Step 1: Kill tmux session
     if session_exists "$session_name"; then
@@ -192,12 +197,6 @@ main() {
     log_info "Cleaning metadata..."
     delete_session "$session_name"
     log_success "Metadata cleaned"
-
-    # Step 6: Switch to previous session if needed
-    if [ -n "$previous_session" ]; then
-        log_info "Switching to session: $previous_session"
-        switch_to_session "$previous_session"
-    fi
 
     log_success "Cleanup complete: $session_name"
 }
