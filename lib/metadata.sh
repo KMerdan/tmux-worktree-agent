@@ -224,6 +224,56 @@ get_session_description() {
        "$METADATA_FILE"
 }
 
+# Set sidebar_task_file on a session (marks it as a sidebar host)
+set_sidebar_task_file() {
+    local session_name="$1"
+    local task_file="$2"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    if ! session_in_metadata "$session_name"; then
+        return 1
+    fi
+
+    jq --arg session "$session_name" \
+       --arg tf "$task_file" \
+       '.[$session].sidebar_task_file = $tf' \
+       "$METADATA_FILE" > "$METADATA_FILE.tmp" && mv "$METADATA_FILE.tmp" "$METADATA_FILE"
+}
+
+# Clear sidebar_task_file from a session
+clear_sidebar_task_file() {
+    local session_name="$1"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    if ! session_in_metadata "$session_name"; then
+        return 1
+    fi
+
+    jq --arg session "$session_name" \
+       'del(.[$session].sidebar_task_file)' \
+       "$METADATA_FILE" > "$METADATA_FILE.tmp" && mv "$METADATA_FILE.tmp" "$METADATA_FILE"
+}
+
+# Find the sidebar host session for a given repo name
+# Returns the session name that has sidebar_task_file set for that repo
+find_sidebar_session_for_repo() {
+    local repo="$1"
+
+    if [ ! -f "$METADATA_FILE" ]; then
+        return 1
+    fi
+
+    jq -r --arg repo "$repo" \
+       'to_entries[] | select(.value.repo == $repo and .value.sidebar_task_file != null) | .key' \
+       "$METADATA_FILE" | head -1
+}
+
 # Get session agent command
 get_session_agent() {
     local session_name="$1"
