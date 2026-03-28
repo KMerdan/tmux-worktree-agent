@@ -216,7 +216,7 @@ rm -f "$METADATA_FILE"
 
 save_session "myrepo-feat" "myrepo" "feat" "wt/feat" \
     "/home/user/.worktrees/myrepo/feat" "/home/user/projects/myrepo" \
-    "false" "My feature description" "claude"
+    "false" "My feature description" "claude" "dev/feature-v2" "myrepo-main"
 
 sessions_list="$(list_sessions)"
 assert_contains "list_sessions contains saved session" "myrepo-feat" "$sessions_list"
@@ -236,6 +236,12 @@ assert_eq "get_session_field description" "My feature description" "$field_desc"
 field_agent="$(get_session_field "myrepo-feat" "agent_cmd")"
 assert_eq "get_session_field agent_cmd" "claude" "$field_agent"
 
+field_parent="$(get_session_field "myrepo-feat" "parent_branch")"
+assert_eq "get_session_field parent_branch" "dev/feature-v2" "$field_parent"
+
+field_parent_sess="$(get_session_field "myrepo-feat" "parent_session")"
+assert_eq "get_session_field parent_session" "myrepo-main" "$field_parent_sess"
+
 nonexistent_field="$(get_session_field "does-not-exist" "repo")"
 assert_empty "get_session_field nonexistent returns empty" "$nonexistent_field"
 
@@ -254,6 +260,12 @@ fi
 save_session "myrepo-bugfix" "myrepo" "bugfix" "wt/bugfix" \
     "/home/user/.worktrees/myrepo/bugfix" "/home/user/projects/myrepo" \
     "true" "" "codex"
+
+field_parent_empty="$(get_session_field "myrepo-bugfix" "parent_branch")"
+assert_eq "get_session_field parent_branch empty when not provided" "" "$field_parent_empty"
+
+field_parent_sess_empty="$(get_session_field "myrepo-bugfix" "parent_session")"
+assert_eq "get_session_field parent_session empty when not provided" "" "$field_parent_sess_empty"
 
 count="$(count_sessions)"
 assert_eq "count_sessions returns 2" "2" "$count"

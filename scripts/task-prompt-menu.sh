@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
+source "$PLUGIN_DIR/lib/metadata.sh"
 
 trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
 
@@ -69,12 +70,44 @@ send_prompt_to_agent() {
 # Prompt: Start sub-agent task
 # ---------------------------------------------------------------------------
 prompt_start_task() {
-    local text='Load the task and understand it fully before writing any code.
+    # Gather dynamic branch context
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
 
-1. Read your task file and `.shared/context.md` to understand the full scope
-2. Check `.shared/broadcasts/` for updates from other agents working on parallel tasks
+    local current_branch=""
+    local parent_branch=""
+    if cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel >/dev/null 2>&1; then
+        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    fi
+
+    # Read parent_branch from metadata (stored at spawn time, not from current main repo HEAD)
+    local current_session
+    current_session=$(get_current_session 2>/dev/null)
+    if [ -n "$current_session" ]; then
+        parent_branch=$(get_session_field "$current_session" "parent_branch")
+    fi
+
+    local branch_context=""
+    if [ -n "$current_branch" ]; then
+        branch_context="
+## Branch Context
+- **Your branch**: \`${current_branch}\`"
+        if [ -n "$parent_branch" ]; then
+            branch_context+="
+- **Parent branch (merge target)**: \`${parent_branch}\`"
+        fi
+        branch_context+="
+- **Do NOT merge** — commit your work and write your broadcast when done. Merging is handled separately by the orchestrator."
+    fi
+
+    local text="Load the task and understand it fully before writing any code.
+${branch_context}
+
+1. Read your task file and \`.shared/context.md\` to understand the full scope
+2. Check \`.shared/broadcasts/\` for updates from other agents working on parallel tasks
 3. Fact-check every assumption against the actual codebase — read the relevant files, trace the code paths, verify interfaces and types exist as described
-4. Only after you have confirmed your understanding matches reality, begin implementing'
+4. Only after you have confirmed your understanding matches reality, begin implementing
+5. When finished, commit all changes and write your broadcast to \`.shared/broadcasts/TASK-<your-id>.md\` — do NOT merge into any branch"
 
     send_prompt_to_agent "$text" "Start task prompt sent to agent"
 }
@@ -83,6 +116,22 @@ prompt_start_task() {
 # Prompt: Generate task.md
 # ---------------------------------------------------------------------------
 prompt_generate_tasks() {
+    # Gather dynamic branch context
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
+
+    local current_branch=""
+    local short_sha=""
+    if cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel >/dev/null 2>&1; then
+        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        short_sha=$(git rev-parse --short HEAD 2>/dev/null)
+    fi
+
+    local branch_strategy=""
+    if [ -n "$current_branch" ] && [ -n "$short_sha" ]; then
+        branch_strategy="- Branch/merge strategy: all tasks branch from \`${current_branch}\` at commit \`${short_sha}\`. Merging back into \`${current_branch}\` is handled by the orchestrator — agents must NOT merge."
+    fi
+
     local text='Based on what we discussed, create a `task.md` file in the repository root that breaks down the work into separate, non-conflicting tasks. Each task must be independently implementable in its own git worktree without merge conflicts with other tasks.
 
 IMPORTANT: A parser will consume this file. The format below is strict — do not deviate.
@@ -109,7 +158,7 @@ The file has TWO sections:
 - <Files/modules that are FROZEN and must NOT be modified by any task>
 - <External dependencies or API contracts that all tasks must respect>
 - <Performance budgets, security requirements, compliance rules>
-- <Branch/merge strategy (e.g., "all tasks branch from main at commit abc123")>
+'"${branch_strategy:-- <Branch/merge strategy (e.g., \"all tasks branch from dev-branch at commit abc123\")>}"'
 
 ## Cross-Task Dependencies
 <Brief map of how tasks relate — which produces interfaces others consume, ordering constraints>
@@ -301,19 +350,249 @@ Present your findings as a ranked table, then give me your top 3 recommended del
 }
 
 # ---------------------------------------------------------------------------
-# Main menu
+# Custom project prompts (stored in ~/.worktrees/<repo>/.prompts/)
 # ---------------------------------------------------------------------------
-main() {
-    local action
-    action=$(printf "Start sub-agent task\nGenerate task.md\nMerge completed tasks\nUpdate constraints\nSimplify project" | fzf \
+MAX_CUSTOM_PROMPTS=3
+
+# Resolve the .prompts/ directory for the current repo
+get_prompts_dir() {
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
+
+    local repo_path
+    repo_path=$(cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
+    [ -z "$repo_path" ] && return 1
+
+    local repo_name
+    repo_name=$(get_repo_name "$repo_path")
+
+    local base_path
+    base_path=$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")
+
+    echo "$base_path/$repo_name/.prompts"
+}
+
+# List custom prompt files (sorted by name)
+list_custom_prompts() {
+    local prompts_dir="$1"
+    [ -d "$prompts_dir" ] || return 0
+    find "$prompts_dir" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort
+}
+
+# Read title (first line) from a prompt file
+get_prompt_title() {
+    head -1 "$1" 2>/dev/null | sed 's/^#* *//'
+}
+
+# Read body (everything after first line) from a prompt file
+get_prompt_body() {
+    tail -n +2 "$1" 2>/dev/null
+}
+
+# Send a custom prompt to the agent
+run_custom_prompt() {
+    local prompt_file="$1"
+    local body
+    body=$(get_prompt_body "$prompt_file")
+    if [ -z "$body" ]; then
+        log_warn "Prompt file is empty"
+        return 1
+    fi
+    local title
+    title=$(get_prompt_title "$prompt_file")
+    send_prompt_to_agent "$body" "Custom prompt sent: $title"
+}
+
+# Add a new custom prompt via $EDITOR/vim
+custom_prompt_add() {
+    local prompts_dir="$1"
+
+    local count
+    count=$(list_custom_prompts "$prompts_dir" | wc -l | tr -d ' ')
+    if [ "$count" -ge "$MAX_CUSTOM_PROMPTS" ]; then
+        log_error "Maximum $MAX_CUSTOM_PROMPTS custom prompts reached. Remove one first."
+        sleep 1.5
+        return 1
+    fi
+
+    # Ask for a short name
+    local name
+    name=$(prompt "Prompt name (short, no spaces)" "")
+    [ -z "$name" ] && return 1
+    name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+
+    local filepath="$prompts_dir/${name}.md"
+    if [ -f "$filepath" ]; then
+        log_error "Prompt '$name' already exists. Use edit instead."
+        sleep 1.5
+        return 1
+    fi
+
+    mkdir -p "$prompts_dir"
+
+    # Seed with a template
+    cat > "$filepath" <<'TEMPLATE'
+# Prompt Title Here
+Replace this with your prompt text.
+The first line (after #) is the menu title.
+Everything below is sent to the agent.
+TEMPLATE
+
+    local editor="${EDITOR:-vim}"
+    "$editor" "$filepath" </dev/tty >/dev/tty 2>/dev/tty
+
+    # Remove if user left the template or emptied the file
+    if [ ! -s "$filepath" ] || head -1 "$filepath" | grep -q '^# Prompt Title Here$'; then
+        rm -f "$filepath"
+        log_info "Cancelled — prompt not saved"
+        sleep 1
+        return 1
+    fi
+
+    log_success "Custom prompt '$name' saved"
+    sleep 1
+}
+
+# Edit an existing custom prompt
+custom_prompt_edit() {
+    local prompts_dir="$1"
+
+    local files
+    files=$(list_custom_prompts "$prompts_dir")
+    [ -z "$files" ] && { log_warn "No custom prompts to edit"; sleep 1; return 1; }
+
+    # Build fzf list: "filename — title"
+    local menu=""
+    while IFS= read -r f; do
+        local title
+        title=$(get_prompt_title "$f")
+        local base
+        base=$(basename "$f" .md)
+        menu+="${base} — ${title}"$'\n'
+    done <<< "$files"
+
+    local pick
+    pick=$(echo -n "$menu" | fzf \
         --ansi \
-        --header="Task Prompts — select an action" \
+        --header="Select prompt to edit" \
         --layout=reverse \
         --height=100% \
         --no-preview \
         --bind='esc:cancel')
+    [ -z "$pick" ] && return 0
 
-    if [ -z "$action" ]; then
+    local name="${pick%% — *}"
+    local filepath="$prompts_dir/${name}.md"
+
+    local editor="${EDITOR:-vim}"
+    "$editor" "$filepath" </dev/tty >/dev/tty 2>/dev/tty
+
+    log_success "Prompt '$name' updated"
+    sleep 1
+}
+
+# Remove a custom prompt
+custom_prompt_remove() {
+    local prompts_dir="$1"
+
+    local files
+    files=$(list_custom_prompts "$prompts_dir")
+    [ -z "$files" ] && { log_warn "No custom prompts to remove"; sleep 1; return 1; }
+
+    local menu=""
+    while IFS= read -r f; do
+        local title
+        title=$(get_prompt_title "$f")
+        local base
+        base=$(basename "$f" .md)
+        menu+="${base} — ${title}"$'\n'
+    done <<< "$files"
+
+    local pick
+    pick=$(echo -n "$menu" | fzf \
+        --ansi \
+        --header="Select prompt to remove" \
+        --layout=reverse \
+        --height=100% \
+        --no-preview \
+        --bind='esc:cancel')
+    [ -z "$pick" ] && return 0
+
+    local name="${pick%% — *}"
+    local filepath="$prompts_dir/${name}.md"
+
+    rm -f "$filepath"
+    log_success "Prompt '$name' removed"
+    sleep 1
+}
+
+# Sub-menu for managing custom prompts
+manage_custom_prompts() {
+    local prompts_dir
+    prompts_dir=$(get_prompts_dir) || { log_error "Not in a git repository"; exit 1; }
+
+    local action
+    action=$(printf "Add new prompt\nEdit prompt\nRemove prompt" | fzf \
+        --ansi \
+        --header="Manage Custom Prompts" \
+        --layout=reverse \
+        --height=100% \
+        --no-preview \
+        --bind='esc:cancel')
+    [ -z "$action" ] && return 0
+
+    case "$action" in
+        "Add new prompt")    custom_prompt_add "$prompts_dir" ;;
+        "Edit prompt")       custom_prompt_edit "$prompts_dir" ;;
+        "Remove prompt")     custom_prompt_remove "$prompts_dir" ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Main menu
+# ---------------------------------------------------------------------------
+main() {
+    # Build menu: custom prompts first, then separator, then built-ins
+    local prompts_dir
+    prompts_dir=$(get_prompts_dir 2>/dev/null)
+
+    local custom_entries=""
+    if [ -n "$prompts_dir" ] && [ -d "$prompts_dir" ]; then
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            local title
+            title=$(get_prompt_title "$f")
+            [ -n "$title" ] && custom_entries+="★ ${title}"$'\n'
+        done < <(list_custom_prompts "$prompts_dir")
+    fi
+
+    local menu=""
+    if [ -n "$custom_entries" ]; then
+        menu+="${custom_entries}"
+        menu+="──────────────────────────"$'\n'
+    fi
+    menu+="Start sub-agent task
+Generate task.md
+Merge completed tasks
+Update constraints
+Simplify project
+──────────────────────────
+Manage custom prompts"
+
+    local preview_script="$SCRIPT_DIR/prompt-preview.sh"
+
+    local action
+    action=$(echo -n "$menu" | fzf \
+        --ansi \
+        --header="$(printf 'Task Prompts — select an action\n\nEnter: run  Esc: cancel  Tab: toggle preview')" \
+        --layout=reverse \
+        --height=100% \
+        --preview="bash '$preview_script' {} '${prompts_dir:-}'" \
+        --preview-window=right:60%:wrap \
+        --bind='tab:toggle-preview' \
+        --bind='esc:cancel')
+
+    if [ -z "$action" ] || [[ "$action" == ──* ]]; then
         exit 0
     fi
 
@@ -332,6 +611,24 @@ main() {
             ;;
         "Simplify project")
             prompt_simplify_project
+            ;;
+        "Manage custom prompts")
+            manage_custom_prompts
+            ;;
+        ★*)
+            # Custom prompt — match title back to file
+            local selected_title="${action#★ }"
+            if [ -n "$prompts_dir" ]; then
+                while IFS= read -r f; do
+                    [ -z "$f" ] && continue
+                    local title
+                    title=$(get_prompt_title "$f")
+                    if [ "$title" = "$selected_title" ]; then
+                        run_custom_prompt "$f"
+                        break
+                    fi
+                done < <(list_custom_prompts "$prompts_dir")
+            fi
             ;;
     esac
 }

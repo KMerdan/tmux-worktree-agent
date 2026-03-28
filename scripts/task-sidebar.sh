@@ -61,10 +61,19 @@ build_sidebar_lines() {
             if echo "$task_status" | grep -q '\[x\]'; then
                 is_done=true
             elif [ -d "$repo_path" ]; then
-                local base_branch
-                base_branch=$(get_default_branch "$repo_path")
+                # Prefer parent_branch from metadata, fall back to repo default
+                local base_branch=""
+                if [ -f "$METADATA_FILE" ]; then
+                    base_branch=$(jq -r --arg s "$session_name" '.[$s].parent_branch // empty' "$METADATA_FILE" 2>/dev/null)
+                fi
+                if [ -z "$base_branch" ]; then
+                    base_branch=$(get_default_branch "$repo_path")
+                fi
                 if git -C "$repo_path" branch --merged "$base_branch" 2>/dev/null \
                     | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+                    is_done=true
+                elif git -C "$repo_path" log --merges --oneline "$base_branch" 2>/dev/null \
+                    | grep -q "Merge branch '${branch_name}'"; then
                     is_done=true
                 fi
             fi
@@ -111,10 +120,19 @@ count_tasks() {
         if echo "$task_status" | grep -q '\[x\]'; then
             done=$((done + 1))
         elif [ -d "$repo_path" ]; then
-            local base_branch
-            base_branch=$(get_default_branch "$repo_path")
+            local session_name="${repo_name}-${sanitized}"
+            local base_branch=""
+            if [ -f "$METADATA_FILE" ]; then
+                base_branch=$(jq -r --arg s "$session_name" '.[$s].parent_branch // empty' "$METADATA_FILE" 2>/dev/null)
+            fi
+            if [ -z "$base_branch" ]; then
+                base_branch=$(get_default_branch "$repo_path")
+            fi
             if git -C "$repo_path" branch --merged "$base_branch" 2>/dev/null \
                 | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
+                done=$((done + 1))
+            elif git -C "$repo_path" log --merges --oneline "$base_branch" 2>/dev/null \
+                | grep -q "Merge branch '${branch_name}'"; then
                 done=$((done + 1))
             fi
         fi

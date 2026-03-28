@@ -76,7 +76,7 @@ tmux bind-key "$helper_key" display-popup -E -w 95% -h 95% -d "#{pane_current_pa
 tmux bind-key "$description_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/session-description.sh prompt"
 tmux bind-key "$ops_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/window-pane-ops.sh"
 tmux bind-key "$task_selector_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-selector.sh"
-tmux bind-key "$task_prompt_key" display-popup -E -w 60% -h 30% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-prompt-menu.sh"
+tmux bind-key "$task_prompt_key" display-popup -E -w 95% -h 95% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/task-prompt-menu.sh"
 tmux bind-key "$register_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/register-session.sh"
 tmux bind-key "$sidebar_key" run-shell "$CURRENT_DIR/scripts/task-sidebar.sh toggle"
 

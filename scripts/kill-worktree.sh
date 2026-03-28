@@ -106,18 +106,27 @@ main() {
 
     local previous_session=""
 
+    # Prefer parent_session from metadata (the session that spawned this worktree)
+    local stored_parent
+    stored_parent=$(get_session_field "$session_name" "parent_session")
+    if [ -n "$stored_parent" ] && session_exists "$stored_parent"; then
+        previous_session="$stored_parent"
+    fi
+
     # If we're in the session to be deleted, switch away first
     if [ -n "$TMUX" ]; then
         local current_session
         current_session=$(get_current_session)
 
         if [ "$current_session" = "$session_name" ]; then
-            # Get list of other sessions
-            local sessions
-            sessions=$(tmux list-sessions -F '#{session_name}' | grep -v "^$session_name$" | head -1 || true)
+            # Fall back to first available session if no parent_session
+            if [ -z "$previous_session" ]; then
+                local sessions
+                sessions=$(tmux list-sessions -F '#{session_name}' | grep -v "^$session_name$" | head -1 || true)
 
-            if [ -n "$sessions" ]; then
-                previous_session="$sessions"
+                if [ -n "$sessions" ]; then
+                    previous_session="$sessions"
+                fi
             fi
         fi
     fi

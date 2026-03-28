@@ -30,6 +30,8 @@ save_session() {
     local agent_running="${7:-false}"
     local description="${8:-}"
     local agent_cmd="${9:-}"
+    local parent_branch="${10:-}"
+    local parent_session="${11:-}"
 
     init_metadata
 
@@ -47,6 +49,8 @@ save_session() {
         --argjson agent_running "$agent_running" \
         --arg description "$description" \
         --arg agent_cmd "$agent_cmd" \
+        --arg parent_branch "$parent_branch" \
+        --arg parent_session "$parent_session" \
         '{
             repo: $repo,
             topic: $topic,
@@ -56,7 +60,9 @@ save_session() {
             created_at: $created_at,
             agent_running: $agent_running,
             description: $description,
-            agent_cmd: $agent_cmd
+            agent_cmd: $agent_cmd,
+            parent_branch: $parent_branch,
+            parent_session: $parent_session
         }')
 
     jq --arg session "$session_name" \

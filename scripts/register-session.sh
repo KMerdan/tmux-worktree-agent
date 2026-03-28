@@ -148,6 +148,12 @@ main() {
         agent_running=true
     fi
 
+    # Detect parent branch from main repo
+    local parent_branch=""
+    if [ -n "$main_repo_path" ] && [ -d "$main_repo_path" ]; then
+        parent_branch=$(cd "$main_repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    fi
+
     save_session "$session_name" \
         "${repo_name:-unknown}" \
         "$topic" \
@@ -156,7 +162,8 @@ main() {
         "${main_repo_path:-$worktree_path}" \
         "$agent_running" \
         "" \
-        "$agent_cmd"
+        "$agent_cmd" \
+        "$parent_branch"
 
     log_success "Session '$session_name' registered"
     sleep 1

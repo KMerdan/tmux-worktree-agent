@@ -642,6 +642,18 @@ spawn_session_for_worktree() {
     local repo_path="$6"
     local description="${7:-}"
     local auto_switch="${8:-true}"
+    local parent_branch="${9:-}"
+    local parent_session="${10:-}"
+
+    # Auto-detect parent branch if not provided
+    if [ -z "$parent_branch" ] && [ -d "$repo_path" ]; then
+        parent_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    fi
+
+    # Auto-detect parent session if not provided
+    if [ -z "$parent_session" ] && [ -n "$TMUX" ]; then
+        parent_session=$(get_current_session 2>/dev/null || true)
+    fi
 
     # Determine if we should launch agent
     local auto_agent="${WORKTREE_AUTO_AGENT:-on}"
@@ -684,7 +696,8 @@ spawn_session_for_worktree() {
     fi
 
     save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
-        "$worktree_path" "$repo_path" "$agent_available" "$description" "$agent_cmd"
+        "$worktree_path" "$repo_path" "$agent_available" "$description" "$agent_cmd" \
+        "$parent_branch" "$parent_session"
 
     log_success "Session created: $session_name"
 

@@ -88,8 +88,14 @@ build_topology_lines() {
         # Check if branch has been merged into base branch (existing or deleted)
         local is_merged=false
         if [ -n "$repo_path" ]; then
-            local base_branch
-            base_branch=$(get_default_branch "$repo_path")
+            # Prefer parent_branch from metadata, fall back to repo default
+            local base_branch=""
+            if [ -f "$METADATA_FILE" ]; then
+                base_branch=$(jq -r --arg s "$session_name" '.[$s].parent_branch // empty' "$METADATA_FILE" 2>/dev/null)
+            fi
+            if [ -z "$base_branch" ]; then
+                base_branch=$(get_default_branch "$repo_path")
+            fi
             if git -C "$repo_path" branch --merged "$base_branch" 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch_name"; then
                 is_merged=true
             elif git -C "$repo_path" log --merges --oneline "$base_branch" 2>/dev/null | grep -q "Merge branch '${branch_name}'"; then

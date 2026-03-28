@@ -17,16 +17,33 @@ build_merge_prompt() {
     local shared_dir
     shared_dir="$(expand_tilde "${WORKTREE_PATH:-$HOME/.worktrees}")/${repo_name}/.shared"
 
-    # Detect base branch for this repo
-    local base_branch
-    base_branch=$(get_default_branch "$repo_path")
+    # Detect base branch: prefer parent_branch from metadata, fall back to repo default
+    local base_branch=""
+    local sessions
+    sessions=$(find_sessions_by_repo "$repo_name" 2>/dev/null)
+
+    # Try to get parent_branch from the first session that has one
+    if [ -n "$sessions" ]; then
+        while IFS= read -r _s; do
+            [ -z "$_s" ] && continue
+            local pb
+            pb=$(get_session_field "$_s" "parent_branch")
+            if [ -n "$pb" ]; then
+                base_branch="$pb"
+                break
+            fi
+        done <<< "$sessions"
+    fi
+
+    # Fall back to repo default branch if no parent_branch found
+    if [ -z "$base_branch" ]; then
+        base_branch=$(get_default_branch "$repo_path")
+    fi
 
     # Collect active sessions with work to review
     local branch_status=""
     local broadcasts=""
     local has_work=false
-    local sessions
-    sessions=$(find_sessions_by_repo "$repo_name" 2>/dev/null)
     if [ -n "$sessions" ]; then
         while IFS= read -r session; do
             [ -z "$session" ] && continue
