@@ -37,6 +37,10 @@ build_sidebar_lines() {
     local DIM='\033[2m'
     local NC='\033[0m'
 
+    local active_lines=()
+    local pending_lines=()
+    local done_lines=()
+
     while IFS=$'\t' read -r tid title task_status priority depends blocks start_line end_line; do
         [ -z "$tid" ] && continue
 
@@ -95,10 +99,34 @@ build_sidebar_lines() {
             short_id="${short_id:0:9}~"
         fi
 
-        printf "%b %-10s %s\t%s\t%s\t%s\t%s\n" \
+        local formatted_line
+        formatted_line=$(printf "%b %-10s %s\t%s\t%s\t%s\t%s" \
             "$icon" "$short_id" "$short_title" \
-            "$tid" "$status" "$start_line" "$end_line"
+            "$tid" "$status" "$start_line" "$end_line")
+
+        case "$status" in
+            active)  active_lines+=("$formatted_line") ;;
+            done)    done_lines+=("$formatted_line") ;;
+            *)       pending_lines+=("$formatted_line") ;;
+        esac
     done < <(parse_tasks "$task_file")
+
+    # Output: active → pending → done, with separators between groups
+    for l in "${active_lines[@]}"; do
+        echo "$l"
+    done
+    if [ ${#pending_lines[@]} -gt 0 ] && [ ${#active_lines[@]} -gt 0 ]; then
+        printf "${DIM}────── pending ───────${NC}\t\t\t\t\n"
+    fi
+    for l in "${pending_lines[@]}"; do
+        echo "$l"
+    done
+    if [ ${#done_lines[@]} -gt 0 ] && [ $((${#active_lines[@]} + ${#pending_lines[@]})) -gt 0 ]; then
+        printf "${DIM}──────── done ────────${NC}\t\t\t\t\n"
+    fi
+    for l in "${done_lines[@]}"; do
+        echo "$l"
+    done
 }
 
 # Count done/total from task list
