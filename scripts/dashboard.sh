@@ -38,9 +38,13 @@ IPC_DIR="/tmp/wta-dash"
 ipc_file() { echo "${IPC_DIR}/$1"; }
 
 ipc_read() {
-    local f
+    local f val
     f=$(ipc_file "$1")
-    [ -f "$f" ] && cat "$f" 2>/dev/null
+    [ -f "$f" ] || return
+    val=$(cat "$f" 2>/dev/null)
+    val="${val#"${val%%[![:space:]]*}"}"   # trim leading whitespace
+    val="${val%"${val##*[![:space:]]}"}"   # trim trailing whitespace
+    [ -n "$val" ] && echo "$val"
 }
 
 ipc_write() {
@@ -171,7 +175,7 @@ cmd_project_col() {
             --with-nth=1 \
             --height=100% \
             --expect=enter,right \
-            --bind "focus:execute-silent(echo {2} > '$(ipc_file project)'; echo {3} > '$(ipc_file project_path)')" \
+            --bind "focus:execute-silent(echo {2} > '$(ipc_file project)'; echo {3} > '$(ipc_file project_path)'; echo > '$(ipc_file session)'; echo > '$(ipc_file subtask)')" \
             --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-projects)" \
         ) || true
 
@@ -287,7 +291,7 @@ cmd_session_col() {
             --with-nth=1 \
             --height=100% \
             --expect=enter,right,left \
-            --bind "focus:execute-silent(echo {2} > '$(ipc_file session)')" \
+            --bind "focus:execute-silent(echo {2} > '$(ipc_file session)'; echo > '$(ipc_file subtask)')" \
             --bind "ctrl-n:execute(tmux display-popup -E -w 85% -h 85% -d '${repo_path:-~}' '$SCRIPT_DIR/create-worktree.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
             --bind "ctrl-t:execute(tmux display-popup -E -w 95% -h 95% -d '${repo_path:-~}' '$SCRIPT_DIR/task-selector.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
             --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
