@@ -45,6 +45,12 @@ main() {
     local repo_name
     repo_name=$(get_repo_name "$repo_path")
 
+    # Resolve parent session: prefer this repo's hub over auto-detected session
+    local parent_session="${repo_name}-hub"
+    if ! session_in_metadata "$parent_session"; then
+        parent_session=$(get_current_session 2>/dev/null || true)
+    fi
+
     # Step 2: Get branch and topic
     if [ "$QUICK_MODE" = true ]; then
         # Quick mode: topic only, auto-generate branch from current HEAD
@@ -155,7 +161,7 @@ main() {
 
             # Create session and metadata
             spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
-                "$branch_name" "$worktree_path" "$repo_path" "" "true"
+                "$branch_name" "$worktree_path" "$repo_path" "" "true" "" "$parent_session"
             exit 0
         else
             log_error "Directory exists but is not a git worktree"
@@ -200,7 +206,7 @@ main() {
                 # Create tmux session pointing at current repo, no worktree
                 log_info "Creating session at repo root (no worktree)"
                 spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
-                    "$branch_name" "$repo_path" "$repo_path" "" "true"
+                    "$branch_name" "$repo_path" "$repo_path" "" "true" "" "$parent_session"
                 exit 0
                 ;;
             "Use directly")
@@ -232,7 +238,7 @@ main() {
 
     # Step 6: Create session and metadata
     spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
-        "$branch_name" "$worktree_path" "$repo_path" "" "true"
+        "$branch_name" "$worktree_path" "$repo_path" "" "true" "" "$parent_session"
 }
 
 # Run main
