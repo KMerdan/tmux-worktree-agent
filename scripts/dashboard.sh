@@ -189,7 +189,11 @@ cmd_project_col() {
                     save_session "$hub" "$sel_repo" "hub" "" "" "$sel_path" false "Dashboard hub" "" "" ""
                 fi
             fi
-            # Move focus to col 2
+            # Move focus to col 2 and trigger refresh
+            # Send ctrl-r to the pane to the right (col 2) before switching
+            local col2_pane
+            col2_pane=$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '2p' | cut -d: -f2)
+            [ -n "$col2_pane" ] && tmux send-keys -t "$col2_pane" C-r 2>/dev/null || true
             tmux select-pane -R 2>/dev/null || true
         fi
 
@@ -304,6 +308,10 @@ cmd_session_col() {
                 fi
                 ;;
             right)
+                # Send ctrl-r to col 3 to refresh before switching
+                local col3_pane
+                col3_pane=$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '3p' | cut -d: -f2)
+                [ -n "$col3_pane" ] && tmux send-keys -t "$col3_pane" C-r 2>/dev/null || true
                 tmux select-pane -R 2>/dev/null || true
                 ;;
             left)
