@@ -659,22 +659,25 @@ setup_dashboard_window() {
     # Pane 0 starts as the full window. Assign it to preview (rightmost).
     # Split left from it to create the other 3 panes.
 
+    # Layout: 20% | 20% | 20% | 40%  (project | session | subtask | preview)
+    # Split right-to-left using pane IDs to avoid index shifting.
+
     # Step 1: pane 0 = preview (will end up rightmost)
     local p0
     p0=$(tmux list-panes -t "${hub_name}:dashboard" -F '#{pane_id}' | head -1)
 
-    # Step 2: split left of preview → subtask-col (55% left, 45% preview)
+    # Step 2: split left of preview → subtask-col (60% left, 40% preview)
     local p_subtask
-    p_subtask=$(tmux split-window -t "$p0" -hb -l 55% -P -F '#{pane_id}' \
+    p_subtask=$(tmux split-window -t "$p0" -hb -l 60% -P -F '#{pane_id}' \
         "bash '$SCRIPT_DIR/dashboard.sh' subtask-col")
 
-    # Step 3: split left of subtask → session-col (65% left of subtask's portion)
+    # Step 3: split left of subtask → session-col (half of 60% = each gets 50%)
     local p_session
-    p_session=$(tmux split-window -t "$p_subtask" -hb -l 65% -P -F '#{pane_id}' \
+    p_session=$(tmux split-window -t "$p_subtask" -hb -l 66% -P -F '#{pane_id}' \
         "bash '$SCRIPT_DIR/dashboard.sh' session-col '$repo_name'")
 
-    # Step 4: split left of session → project-col (20% of session's portion ≈ 15% total)
-    tmux split-window -t "$p_session" -hb -l 20% \
+    # Step 4: split left of session → project-col (half of remaining = equal thirds)
+    tmux split-window -t "$p_session" -hb -l 50% \
         "bash '$SCRIPT_DIR/dashboard.sh' project-col"
 
     # Pane 0 (the original) becomes preview
