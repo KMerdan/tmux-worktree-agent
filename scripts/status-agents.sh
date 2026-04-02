@@ -146,61 +146,34 @@ main() {
 
     local sessions
     sessions=$(list_sessions)
+    [ -z "$sessions" ] && exit 0
 
-    if [ -z "$sessions" ]; then
-        exit 0
-    fi
-
-    local current_session=""
-    if [ -n "$TMUX" ]; then
-        current_session=$(get_current_session)
-    fi
-
-    local output=""
-    local count=0
+    local prompt_count=0 active_count=0 off_count=0 dead_count=0
 
     for session in $sessions; do
-        if ! tmux has-session -t "$session" 2>/dev/null; then
-            continue
-        fi
-
-        local agent_cmd topic status
-        agent_cmd=$(get_session_agent "$session")
-        topic=$(get_session_field "$session" "topic")
+        tmux has-session -t "$session" 2>/dev/null || continue
+        local status
         status=$(agent_status_icon "$session")
-
-        local agent_label="${agent_cmd:-sh}"
-        local short_topic
-        short_topic=$(truncate "$topic" "$MAX_TOPIC_LEN")
-
-        local icon color reset="#[default]"
         case "$status" in
-            active) icon="●" color="#[fg=#a6e3a1]" ;;   # green  - working
-            prompt) icon="⏎" color="#[fg=#fab387]" ;;   # orange - needs you
-            off)    icon="◌" color="#[fg=#6c7086]" ;;   # grey   - no agent
-            dead)   icon="✗" color="#[fg=#f38ba8]" ;;   # red    - session gone
+            prompt) ((prompt_count++)) ;;
+            active) ((active_count++)) ;;
+            off)    ((off_count++)) ;;
+            dead)   ((dead_count++)) ;;
         esac
-
-        # Highlight current session
-        local label_style="#[fg=#cdd6f4]"
-        if [ "$session" = "$current_session" ]; then
-            label_style="#[fg=#cdd6f4,bold,underscore]"
-        fi
-
-        # Separator between entries
-        if [ $count -gt 0 ]; then
-            output+=" #[fg=#585b70]│ "
-        fi
-
-        output+="${color}${icon} ${label_style}${agent_label}#[nobold,nounderscore]#[fg=#9399b2]:${short_topic}${reset}"
-        ((count++))
     done
 
-    if [ $count -eq 0 ]; then
-        exit 0
-    fi
+    local total=$((prompt_count + active_count + off_count + dead_count))
+    [ $total -eq 0 ] && exit 0
 
-    echo "#[fg=#585b70]▏${output} #[fg=#585b70]▕"
+    local output=""
+    [ $prompt_count -gt 0 ] && output+="#[fg=#fab387]⏎${prompt_count} "
+    [ $dead_count -gt 0 ]   && output+="#[fg=#f38ba8]✗${dead_count} "
+    [ $active_count -gt 0 ] && output+="#[fg=#a6e3a1]●${active_count} "
+    [ $off_count -gt 0 ]    && output+="#[fg=#6c7086]◌${off_count}"
+
+    echo "#[fg=#585b70]▏${output}#[fg=#585b70]▕"
 }
 
-main
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main
+fi
