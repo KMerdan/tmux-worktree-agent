@@ -153,6 +153,29 @@ cmd_list_projects() {
 cmd_project_col() {
     trap "rm -f '$(ipc_file project)' '$(ipc_file session)' '$(ipc_file subtask)'" EXIT
 
+    # Helper script for hub bootstrap + navigate right
+    local nav_right_script
+    nav_right_script=$(mktemp)
+    cat > "$nav_right_script" <<'NAVEOF'
+#!/usr/bin/env bash
+source "$1/utils.sh"
+source "$2/lib/metadata.sh"
+IPC_DIR="/tmp/wta-dash"
+repo=$(cat "$IPC_DIR/project" 2>/dev/null | tr -d '[:space:]')
+repo_path=$(cat "$IPC_DIR/project_path" 2>/dev/null | tr -d '[:space:]')
+if [ -n "$repo" ] && [ -n "$repo_path" ]; then
+    hub="${repo}-hub"
+    if ! session_in_metadata "$hub"; then
+        save_session "$hub" "$repo" "hub" "" "" "$repo_path" false "Dashboard hub" "" "" ""
+    fi
+fi
+col2=$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '2p' | cut -d: -f2)
+[ -n "$col2" ] && tmux send-keys -t "$col2" C-r 2>/dev/null
+tmux select-pane -R 2>/dev/null
+NAVEOF
+    chmod +x "$nav_right_script"
+    trap "rm -f '$nav_right_script' '$(ipc_file project)' '$(ipc_file session)' '$(ipc_file subtask)'" EXIT
+
     while true; do
         local lines
         lines=$(build_project_lines)
@@ -161,8 +184,7 @@ cmd_project_col() {
             lines=$(printf "${DIM}  No projects found${NC}\t\t\n")
         fi
 
-        local result
-        result=$(echo -e "$lines" | fzf \
+        echo -e "$lines" | fzf \
             --ansi \
             --no-sort \
             --layout=reverse \
@@ -174,32 +196,11 @@ cmd_project_col() {
             --delimiter=$'\t' \
             --with-nth=1 \
             --height=100% \
-            --expect=enter,right \
             --bind "focus:execute-silent(echo {2} > '$(ipc_file project)'; echo {3} > '$(ipc_file project_path)'; echo > '$(ipc_file session)'; echo > '$(ipc_file subtask)')" \
+            --bind "enter:execute-silent(bash '$nav_right_script' '$SCRIPT_DIR' '$PLUGIN_DIR')" \
+            --bind "right:execute-silent(bash '$nav_right_script' '$SCRIPT_DIR' '$PLUGIN_DIR')" \
             --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-projects)" \
-        ) || true
-
-        local key
-        key=$(echo "$result" | head -1)
-
-        if [ "$key" = "enter" ] || [ "$key" = "right" ]; then
-            # Bootstrap hub for untracked projects
-            local sel_repo sel_path
-            sel_repo=$(ipc_read project)
-            sel_path=$(ipc_read project_path)
-            if [ -n "$sel_repo" ] && [ -n "$sel_path" ]; then
-                local hub="${sel_repo}-hub"
-                if ! session_in_metadata "$hub"; then
-                    save_session "$hub" "$sel_repo" "hub" "" "" "$sel_path" false "Dashboard hub" "" "" ""
-                fi
-            fi
-            # Move focus to col 2 and trigger refresh
-            # Send ctrl-r to the pane to the right (col 2) before switching
-            local col2_pane
-            col2_pane=$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '2p' | cut -d: -f2)
-            [ -n "$col2_pane" ] && tmux send-keys -t "$col2_pane" C-r 2>/dev/null || true
-            tmux select-pane -R 2>/dev/null || true
-        fi
+        || true
 
         [ -t 0 ] || break
         sleep 0.2
@@ -277,51 +278,30 @@ cmd_session_col() {
         lines=$(_build_session_lines_sorted "$repo_name")
         [ -z "$lines" ] && lines=$(printf "${DIM}  No sessions${NC}\t\t\n")
 
-        local result
-        result=$(echo -e "$lines" | fzf \
+        # Helper: navigate right, refresh col 3
+        local nav_right_cmd="col3=\$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '3p' | cut -d: -f2); [ -n \"\$col3\" ] && tmux send-keys -t \"\$col3\" C-r 2>/dev/null; tmux select-pane -R 2>/dev/null"
+
+        echo -e "$lines" | fzf \
             --ansi \
             --no-sort \
             --layout=reverse \
             --no-info \
             --header-first \
-            --header="Sessions" \
+            --header="Sessions  ^N:create ^T:tasks ^D:kill ^R:refresh" \
             --prompt="" \
             --pointer="▸" \
             --delimiter=$'\t' \
             --with-nth=1 \
             --height=100% \
-            --expect=enter,right,left \
             --bind "focus:execute-silent(echo {2} > '$(ipc_file session)'; echo > '$(ipc_file subtask)')" \
-            --bind "ctrl-n:execute(tmux display-popup -E -w 85% -h 85% -d '${repo_path:-~}' '$SCRIPT_DIR/create-worktree.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
-            --bind "ctrl-t:execute(tmux display-popup -E -w 95% -h 95% -d '${repo_path:-~}' '$SCRIPT_DIR/task-selector.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
-            --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
-            --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null)\")" \
-        ) || true
-
-        local key
-        key=$(echo "$result" | head -1)
-        local selected_line
-        selected_line=$(echo "$result" | tail -1)
-        local selected_session
-        selected_session=$(echo "$selected_line" | awk -F'\t' '{print $2}')
-
-        case "$key" in
-            enter)
-                if [ -n "$selected_session" ]; then
-                    tmux switch-client -t "$selected_session" 2>/dev/null || true
-                fi
-                ;;
-            right)
-                # Send ctrl-r to col 3 to refresh before switching
-                local col3_pane
-                col3_pane=$(tmux list-panes -F '#{pane_index}:#{pane_id}' 2>/dev/null | sort -t: -k1 -n | sed -n '3p' | cut -d: -f2)
-                [ -n "$col3_pane" ] && tmux send-keys -t "$col3_pane" C-r 2>/dev/null || true
-                tmux select-pane -R 2>/dev/null || true
-                ;;
-            left)
-                tmux select-pane -L 2>/dev/null || true
-                ;;
-        esac
+            --bind "enter:execute-silent(tmux switch-client -t {2} 2>/dev/null)" \
+            --bind "right:execute-silent($nav_right_cmd)" \
+            --bind "left:execute-silent(tmux select-pane -L 2>/dev/null)" \
+            --bind "ctrl-n:execute(tmux display-popup -E -w 85% -h 85% -d '${repo_path:-~}' '$SCRIPT_DIR/create-worktree.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null | tr -d '[:space:]')\")" \
+            --bind "ctrl-t:execute(tmux display-popup -E -w 95% -h 95% -d '${repo_path:-~}' '$SCRIPT_DIR/task-selector.sh')+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null | tr -d '[:space:]')\")" \
+            --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null | tr -d '[:space:]')\")" \
+            --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-sessions \"\$(cat '$(ipc_file project)' 2>/dev/null | tr -d '[:space:]')\")" \
+        || true
 
         [ -t 0 ] || break
         sleep 0.2
@@ -392,45 +372,25 @@ cmd_subtask_col() {
         lines=$(_build_subtask_lines_sorted "$parent_session")
         [ -z "$lines" ] && lines=$(printf "${DIM}  No sub-tasks${NC}\t\t\n")
 
-        local result
-        result=$(echo -e "$lines" | fzf \
+        echo -e "$lines" | fzf \
             --ansi \
             --no-sort \
             --layout=reverse \
             --no-info \
             --header-first \
-            --header="Sub-tasks" \
+            --header="Sub-tasks  ^D:kill ^R:refresh" \
             --prompt="" \
             --pointer="▸" \
             --delimiter=$'\t' \
             --with-nth=1 \
             --height=100% \
-            --expect=enter,right,left \
             --bind "focus:execute-silent(echo {2} > '$(ipc_file subtask)')" \
-            --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/dashboard.sh' list-subtasks \"\$(cat '$(ipc_file session)' 2>/dev/null)\")" \
-            --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-subtasks \"\$(cat '$(ipc_file session)' 2>/dev/null)\")" \
-        ) || true
-
-        local key
-        key=$(echo "$result" | head -1)
-        local selected_line
-        selected_line=$(echo "$result" | tail -1)
-        local selected_session
-        selected_session=$(echo "$selected_line" | awk -F'\t' '{print $2}')
-
-        case "$key" in
-            enter)
-                if [ -n "$selected_session" ]; then
-                    tmux switch-client -t "$selected_session" 2>/dev/null || true
-                fi
-                ;;
-            right)
-                tmux select-pane -R 2>/dev/null || true
-                ;;
-            left)
-                tmux select-pane -L 2>/dev/null || true
-                ;;
-        esac
+            --bind "enter:execute-silent(tmux switch-client -t {2} 2>/dev/null)" \
+            --bind "right:execute-silent(tmux select-pane -R 2>/dev/null)" \
+            --bind "left:execute-silent(tmux select-pane -L 2>/dev/null)" \
+            --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/dashboard.sh' list-subtasks \"\$(cat '$(ipc_file session)' 2>/dev/null | tr -d '[:space:]')\")" \
+            --bind "ctrl-r:reload(bash '$SCRIPT_DIR/dashboard.sh' list-subtasks \"\$(cat '$(ipc_file session)' 2>/dev/null | tr -d '[:space:]')\")" \
+        || true
 
         [ -t 0 ] || break
         sleep 0.2
