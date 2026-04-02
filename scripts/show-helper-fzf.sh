@@ -42,7 +42,7 @@ generate_command_list() {
     local context="$1"
 
     # === PRIMARY WORKFLOW ===
-    echo "ref|🏠 Dashboard (home base)|C-a H|Open the agent dashboard — monitor, spawn, and navigate all sessions"
+    echo "ref|🔍 Browse sessions|C-a w|Tree view of all projects and sessions with live preview"
     echo "ref|⚡ Jump to next waiting agent|C-a a|Instantly switch to the agent that needs your input"
     echo "---"
 

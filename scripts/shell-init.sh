@@ -85,14 +85,13 @@ worktree_agent_init() {
     echo ""
 }
 
-# CLI entry point: open dashboard from any repo directory
+# CLI entry point: open session browser
 wta() {
-    local repo_path="${1:-$(pwd)}"
-    if [ ! -f "$_WORKTREE_PLUGIN_DIR/scripts/dashboard.sh" ]; then
+    if [ ! -f "$_WORKTREE_PLUGIN_DIR/scripts/browse-sessions.sh" ]; then
         echo "tmux-worktree-agent not found" >&2
         return 1
     fi
-    bash "$_WORKTREE_PLUGIN_DIR/scripts/dashboard.sh" open "$repo_path"
+    bash "$_WORKTREE_PLUGIN_DIR/scripts/browse-sessions.sh"
 }
 
 # Auto-run on shell startup (only once per shell)
