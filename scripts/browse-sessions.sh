@@ -1,369 +1,241 @@
 #!/usr/bin/env bash
 
+# Browse sessions — tree view grouped by project with live preview
+#
+# Tree structure (built from metadata):
+#   project-name
+#     ● session-a
+#       ⏎ subtask-1
+#       ● subtask-2
+#   ────────────────────
+#   untracked-repo              ← from $PROJECTS scan
+#
+# Enter: switch to session (or bootstrap hub for untracked project)
+# Ctrl-N: create  Ctrl-T: tasks  Ctrl-D: kill  Ctrl-R: refresh
+
 set -e
 
-# Get script directory and source utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
+source "$SCRIPT_DIR/status-agents.sh"
 
 trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
 
-# Check dependencies
 if ! check_dependencies; then
     exit 1
 fi
 
-# Generate preview for fzf
-generate_preview() {
-    local session_name="$1"
+# ── Colors ──────────────────────────────────────────────────────────────
 
-    if [ -z "$session_name" ]; then
-        return
-    fi
+DIM='\033[2m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m'
 
-    local session_data
-    session_data=$(get_session "$session_name")
+# ── Helpers ─────────────────────────────────────────────────────────────
 
-    if [ "$session_data" = "{}" ]; then
-        echo "No metadata found"
-        return
-    fi
-
-    # Extract fields
-    local repo branch worktree_path created_at description agent_cmd
-    repo=$(echo "$session_data" | jq -r '.repo')
-    branch=$(echo "$session_data" | jq -r '.branch')
-    worktree_path=$(echo "$session_data" | jq -r '.worktree_path')
-    created_at=$(echo "$session_data" | jq -r '.created_at')
-    description=$(echo "$session_data" | jq -r '.description // empty')
-    agent_cmd=$(echo "$session_data" | jq -r '.agent_cmd // empty')
-
-    # Display session info (no box — full width, no truncation)
-    echo "Session:  $session_name"
-    echo "Repo:     $repo"
-    echo "Branch:   $branch"
-    echo "Path:     $worktree_path"
-    [ -n "$agent_cmd" ] && echo "Agent:    $agent_cmd"
-    echo "Created:  $created_at"
-
-    if [ -n "$description" ]; then
-        echo ""
-        echo "Description:"
-        echo "  $description"
-    fi
-
-    echo ""
-    echo "─────────────────────────────────────────────────────────────"
-
-    # Session status
-    if tmux has-session -t "$session_name" 2>/dev/null; then
-        echo "Session: active"
-        tmux list-windows -t "$session_name" -F "  Window #I: #W" 2>/dev/null
-    else
-        echo "Session: not running"
-    fi
-
-    # Worktree status
-    if [ -d "$worktree_path" ]; then
-        echo "Worktree: exists"
-        if cd "$worktree_path" 2>/dev/null; then
-            local changed
-            changed=$(git status --short 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$changed" -gt 0 ]; then
-                echo ""
-                echo "Git changes ($changed files):"
-                git status --short 2>/dev/null | head -20 | sed 's/^/  /'
-                if [ "$changed" -gt 20 ]; then
-                    echo "  ... and $((changed - 20)) more"
-                fi
-            else
-                echo "Git: clean"
-            fi
-
-            # Show recent commits on this branch
-            echo ""
-            echo "Recent commits:"
-            git log --oneline -5 2>/dev/null | sed 's/^/  /'
-        fi
-    else
-        echo "Worktree: DELETED"
-    fi
+status_display_icon() {
+    case "$1" in
+        prompt) printf "${YELLOW}⏎${NC}" ;;
+        active) printf "${GREEN}●${NC}" ;;
+        dead)   printf "${RED}✗${NC}" ;;
+        off)    printf "${DIM}◌${NC}" ;;
+        *)      printf "${DIM} ${NC}" ;;
+    esac
 }
 
-# Get agent status for a session
-get_agent_status() {
-    local session_name="$1"
+# ── Build tree ─────────────────────────────────────────────────────────
+#
+# Each line: <display>\t<session_name>\t<type>\t<repo_path>
+# fzf shows display (--with-nth=1), actions use {2},{3},{4}
 
-    # If session doesn't exist, return N/A
-    if ! tmux has-session -t "$session_name" 2>/dev/null; then
-        echo "─"
-        return
+build_tree() {
+    local search_dir="${PROJECTS:-$HOME/localGit}"
+
+    # Repos from metadata
+    local meta_repos=()
+    if [ -f "$METADATA_FILE" ]; then
+        while IFS= read -r repo; do
+            [ -z "$repo" ] && continue
+            meta_repos+=("$repo")
+        done < <(jq -r '[.[].repo] | unique | .[]' "$METADATA_FILE" 2>/dev/null)
     fi
 
-    # Get agent command from session metadata, fallback to env
-    local agent_cmd
-    agent_cmd=$(get_session_agent "$session_name")
-    if [ -z "$agent_cmd" ]; then
-        agent_cmd="${WORKTREE_AGENT_CMD:-claude}"
-    fi
-    local agent_process="${agent_cmd%% *}"  # First word only
+    for repo in "${meta_repos[@]}"; do
+        local hub_name="${repo}-hub"
 
-    # Find agent process in session's process tree
-    local pane_pid=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" | head -1)
+        # Project header with status counts
+        local count=0 cp=0 ca=0
+        while IFS= read -r session; do
+            [ -z "$session" ] && continue
+            [[ "$session" == *-hub ]] && continue
+            ((count++)) || true
+            local st
+            st=$(agent_status_icon "$session")
+            case "$st" in prompt) ((cp++)) || true ;; active) ((ca++)) || true ;; esac
+        done < <(find_sessions_by_repo "$repo")
 
-    if [ -z "$pane_pid" ]; then
-        echo "◌"  # No pane found
-        return
-    fi
+        local suffix=""
+        [ $cp -gt 0 ] && suffix+=" ${YELLOW}⏎${cp}${NC}"
+        [ $ca -gt 0 ] && suffix+=" ${GREEN}●${ca}${NC}"
+        [ $count -gt 0 ] && [ $cp -eq 0 ] && [ $ca -eq 0 ] && suffix+=" ${DIM}${count}${NC}"
 
-    local agent_pid=$(find_agent_pid "$pane_pid" "$agent_process")
+        local repo_path=""
+        repo_path=$(jq -r --arg r "$repo" \
+            '[.[] | select(.repo == $r) | .main_repo_path] | first // empty' \
+            "$METADATA_FILE" 2>/dev/null)
 
-    if [ -z "$agent_pid" ]; then
-        echo "◌"  # No agent process
-        return
-    fi
+        printf " ${BOLD}%s${NC}%b\t\tproject\t%s\n" "$repo" "$suffix" "$repo_path"
 
-    # Check activity: output in last 15 seconds
-    local last_activity=$(tmux display-message -t "$session_name" -p "#{pane_activity}")
-    local current_time=$(date +%s)
-    local time_diff=$((current_time - last_activity))
+        # Top-level sessions (parent empty or hub)
+        while IFS= read -r session; do
+            [ -z "$session" ] && continue
+            [ "$session" = "$hub_name" ] && continue
+            local parent
+            parent=$(get_session_field "$session" "parent_session")
+            [ -n "$parent" ] && [ "$parent" != "$hub_name" ] && continue
 
-    # Check CPU usage
-    local cpu_usage=$(ps -p "$agent_pid" -o %cpu= 2>/dev/null | awk '{print int($1)}')
+            local status s_icon label description
+            status=$(agent_status_icon "$session")
+            s_icon=$(status_display_icon "$status")
+            label="${session#${repo}-}"
+            [ ${#label} -gt 28 ] && label="${label:0:27}~"
+            description=$(get_session_field "$session" "description")
+            local desc_part=""
+            [ -n "$description" ] && desc_part=" ${DIM}${description:0:30}${NC}"
 
-    # Validate cpu_usage before arithmetic comparison
-    if [ -z "$cpu_usage" ]; then
-        echo "○"  # Can't determine CPU, assume idle
-        return
-    fi
+            printf "   %b %s%b\t%s\tsession\t%s\n" "$s_icon" "$label" "$desc_part" "$session" "$repo_path"
 
-    if [ "$time_diff" -lt 15 ] && [ "$cpu_usage" -ge 5 ]; then
-        echo "●"  # Working
-    else
-        echo "○"  # Waiting/idle
-    fi
-}
+            # Child sessions (subtasks of this session)
+            while IFS= read -r child; do
+                [ -z "$child" ] && continue
+                local child_parent
+                child_parent=$(get_session_field "$child" "parent_session")
+                [ "$child_parent" != "$session" ] && continue
 
-# Export function for fzf preview
-export -f generate_preview
-export SCRIPT_DIR PLUGIN_DIR
+                local cs ci cl cd
+                cs=$(agent_status_icon "$child")
+                ci=$(status_display_icon "$cs")
+                cl="${child#${repo}-}"
+                [ ${#cl} -gt 26 ] && cl="${cl:0:25}~"
+                cd=$(get_session_field "$child" "description")
+                local cdp=""
+                [ -n "$cd" ] && cdp=" ${DIM}${cd:0:28}${NC}"
 
-# Build session list
-build_session_list() {
-    local sessions
-    sessions=$(list_sessions)
-
-    if [ -z "$sessions" ]; then
-        echo "No sessions found"
-        return 1
-    fi
-
-    local output=""
-
-    for session in $sessions; do
-        local session_data
-        session_data=$(get_session "$session")
-
-        local repo branch worktree_path status_icon
-
-        repo=$(echo "$session_data" | jq -r '.repo')
-        branch=$(echo "$session_data" | jq -r '.branch')
-        worktree_path=$(echo "$session_data" | jq -r '.worktree_path')
-
-        # Determine status
-        local session_exists=false
-        local worktree_exists=false
-
-        if tmux has-session -t "$session" 2>/dev/null; then
-            session_exists=true
-        fi
-
-        if [ -d "$worktree_path" ]; then
-            worktree_exists=true
-        fi
-
-        # Set status icon and color
-        if $session_exists && $worktree_exists; then
-            status_icon="●"  # Active
-        elif ! $session_exists && $worktree_exists; then
-            status_icon="○"  # Worktree only (no session)
-        elif $session_exists && ! $worktree_exists; then
-            status_icon="⚠"  # Session only (worktree deleted)
-        else
-            status_icon="✗"  # Both missing (stale)
-        fi
-
-        # Get agent status
-        local agent_status="─"
-        if $session_exists; then
-            agent_status=$(get_agent_status "$session")
-        fi
-
-        # Get agent name from metadata
-        local agent_name
-        agent_name=$(echo "$session_data" | jq -r '.agent_cmd // empty')
-        if [ -z "$agent_name" ]; then
-            agent_name="─"
-        fi
-
-        # Get description (truncate for list display)
-        local description
-        description=$(echo "$session_data" | jq -r '.description // empty')
-        if [ ${#description} -gt 60 ]; then
-            description="${description:0:57}..."
-        fi
-        if [ -z "$description" ]; then
-            description="\033[2m(no description)\033[0m"
-        else
-            description="\033[0;36m$description\033[0m"
-        fi
-
-        # Format: status agent session branch description
-        printf "%-2s %-2s %-30s %-8s %-22s %b\n" \
-            "$status_icon" \
-            "$agent_status" \
-            "$session" \
-            "$agent_name" \
-            "$branch" \
-            "$description"
+                printf "     %b %s%b\t%s\tsubtask\t%s\n" "$ci" "$cl" "$cdp" "$child" "$repo_path"
+            done < <(find_sessions_by_repo "$repo")
+        done < <(find_sessions_by_repo "$repo")
     done
+
+    # Separator
+    printf "${DIM}────────────────────────────────${NC}\t\tseparator\t\n"
+
+    # Untracked projects
+    if [ -d "$search_dir" ]; then
+        while IFS= read -r git_dir; do
+            local upath="${git_dir%/.git}"
+            local uname
+            uname=$(get_repo_name "$upath")
+            local skip=false
+            for mr in "${meta_repos[@]}"; do
+                [ "$mr" = "$uname" ] && skip=true && break
+            done
+            $skip && continue
+            printf " ${DIM}%s${NC}\t%s\tuntracked\t%s\n" "$uname" "$uname" "$upath"
+        done < <(find "$search_dir" -maxdepth 2 -type d -name .git 2>/dev/null | sort)
+    fi
 }
 
-# Main browser
+# ── List mode (for fzf reload) ────────────────────────────────────────
+
+if [ "${1:-}" = "--list" ]; then
+    build_tree
+    exit 0
+fi
+
+# ── Main ───────────────────────────────────────────────────────────────
+
 main() {
     # Auto-cleanup stale metadata
     local cleaned
     cleaned=$(clean_orphaned_metadata)
+    [ "$cleaned" -gt 0 ] && log_info "Cleaned $cleaned stale entries"
 
-    if [ "$cleaned" -gt 0 ]; then
-        log_info "Cleaned $cleaned stale metadata entries"
-    fi
+    # Detect current repo for Ctrl-N context
+    local current_repo_path=""
+    current_repo_path=$(git rev-parse --show-toplevel 2>/dev/null) || true
 
-    # Build session list
-    local session_list
-    session_list=$(build_session_list) || true
+    local preview_script="$SCRIPT_DIR/browse-preview.sh"
 
-    if [ -z "$session_list" ] || [ "$session_list" = "No sessions found" ]; then
-        log_warn "No worktree sessions found"
-        log_info "Create one with: prefix + C-w"
-        echo ""
-        read -n 1 -s -r -p "Press any key to close..." < /dev/tty
-        exit 0
-    fi
+    while true; do
+        local tree
+        tree=$(build_tree)
 
-    # Write preview script to tmpfile (avoids quoting issues with bash -c)
-    local preview_script
-    preview_script=$(mktemp)
-    cat > "$preview_script" <<PREVIEW_EOF
-#!/usr/bin/env bash
-source "$SCRIPT_DIR/utils.sh"
-source "$PLUGIN_DIR/lib/metadata.sh"
-$(declare -f generate_preview)
-generate_preview "\$1"
-PREVIEW_EOF
-    chmod +x "$preview_script"
-    trap "rm -f '$preview_script'" EXIT
+        if [ -z "$tree" ]; then
+            log_warn "No projects found"
+            log_info "Create a worktree with: prefix + C-w"
+            echo ""
+            read -n 1 -s -r -p "Press any key to close..." < /dev/tty
+            exit 0
+        fi
 
-    # fzf interface
-    local selected
-    selected=$(echo "$session_list" | fzf \
-        --ansi \
-        --header="[S][A] Session Agent Branch | Enter: switch | Ctrl-d: delete | Tab: preview" \
-        --header-lines=0 \
-        --layout=reverse \
-        --height=100% \
-        --preview="bash '$preview_script' {3}" \
-        --preview-window=bottom:70%:wrap:hidden \
-        --bind='ctrl-d:execute(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && bash $SCRIPT_DIR/kill-worktree.sh {3}")' \
-        --bind='ctrl-r:reload(bash -c "source $SCRIPT_DIR/utils.sh && source $PLUGIN_DIR/lib/metadata.sh && '"$(declare -f get_agent_status; declare -f build_session_list)"' && build_session_list")' \
-        --bind='tab:toggle-preview' \
-        --bind='esc:cancel')
+        local result
+        result=$(echo -e "$tree" | fzf \
+            --ansi \
+            --no-sort \
+            --layout=reverse \
+            --header="Enter:jump ^N:create ^T:tasks ^D:kill ^R:refresh" \
+            --header-first \
+            --prompt="" \
+            --pointer="▸" \
+            --delimiter=$'\t' \
+            --with-nth=1 \
+            --height=100% \
+            --preview="bash '$preview_script' {2} {3} {4}" \
+            --preview-window=right:45%:wrap \
+            --expect=enter \
+            --bind "ctrl-n:execute(tmux display-popup -E -w 85% -h 85% -d '${current_repo_path:-~}' '$SCRIPT_DIR/create-worktree.sh')+reload(bash '$SCRIPT_DIR/browse-sessions.sh' --list)" \
+            --bind "ctrl-t:execute(tmux display-popup -E -w 95% -h 95% -d '${current_repo_path:-~}' '$SCRIPT_DIR/task-selector.sh')+reload(bash '$SCRIPT_DIR/browse-sessions.sh' --list)" \
+            --bind "ctrl-d:execute(tmux display-popup -E -w 85% -h 85% '$SCRIPT_DIR/kill-worktree.sh' {2})+reload(bash '$SCRIPT_DIR/browse-sessions.sh' --list)" \
+            --bind "ctrl-r:reload(bash '$SCRIPT_DIR/browse-sessions.sh' --list)" \
+        ) || break
 
-    if [ -z "$selected" ]; then
-        exit 0
-    fi
+        local key selected_line
+        key=$(echo "$result" | head -1)
+        selected_line=$(echo "$result" | tail -1)
 
-    # Extract session name (third field)
-    local session_name
-    session_name=$(echo "$selected" | awk '{print $3}')
+        if [ "$key" = "enter" ] && [ -n "$selected_line" ]; then
+            local sel_session sel_type sel_path
+            sel_session=$(echo "$selected_line" | awk -F'\t' '{print $2}')
+            sel_type=$(echo "$selected_line" | awk -F'\t' '{print $3}')
+            sel_path=$(echo "$selected_line" | awk -F'\t' '{print $4}')
 
-    # Get status icon
-    local status_icon
-    status_icon=$(echo "$selected" | awk '{print $1}')
-
-    # Handle based on status
-    case "$status_icon" in
-        ●)
-            # Active session - switch to it
-            switch_to_session "$session_name"
-            ;;
-        ○)
-            # Worktree exists, no session - offer to create
-            if confirm "Create session for existing worktree?"; then
-                local worktree_path
-                worktree_path=$(get_session_field "$session_name" "worktree_path")
-                local stored_agent
-                stored_agent=$(get_session_agent "$session_name")
-                local topic
-                topic=$(get_session_field "$session_name" "topic")
-                local branch
-                branch=$(get_session_field "$session_name" "branch")
-
-                # Create session with stored agent
-                if [ -n "$stored_agent" ]; then
-                    create_tmux_session "$session_name" "$worktree_path" true "$stored_agent" "$topic" "$branch"
-                else
-                    create_tmux_session "$session_name" "$worktree_path" false "" "$topic" "$branch"
-                fi
-
-                log_success "Session created: $session_name"
-                switch_to_session "$session_name"
-            fi
-            ;;
-        ⚠)
-            # Session exists, worktree deleted - offer options
-            local action
-            action=$(choose "Worktree missing. What would you like to do?" \
-                "Recreate worktree" "Kill session" "Cancel")
-
-            case "$action" in
-                "Recreate worktree")
-                    local worktree_path
-                    worktree_path=$(get_session_field "$session_name" "worktree_path")
-                    local branch
-                    branch=$(get_session_field "$session_name" "branch")
-                    local main_repo_path
-                    main_repo_path=$(get_session_field "$session_name" "main_repo_path")
-
-                    # Recreate worktree
-                    cd "$main_repo_path" || { log_error "Main repo not found: $main_repo_path"; exit 1; }
-                    mkdir -p "$(dirname "$worktree_path")"
-                    if ! git worktree add "$worktree_path" "$branch"; then
-                        log_error "Failed to recreate worktree: $worktree_path (branch: $branch)"
-                        exit 1
+            case "$sel_type" in
+                session|subtask)
+                    [ -n "$sel_session" ] && tmux switch-client -t "$sel_session" 2>/dev/null && break
+                    ;;
+                untracked)
+                    if [ -n "$sel_session" ] && [ -n "$sel_path" ]; then
+                        local hub="${sel_session}-hub"
+                        if ! session_in_metadata "$hub"; then
+                            save_session "$hub" "$sel_session" "hub" "" "" "$sel_path" false "Dashboard hub" "" "" ""
+                        fi
                     fi
-
-                    log_success "Worktree recreated"
-                    switch_to_session "$session_name"
+                    continue  # refresh tree to show the new project
                     ;;
-                "Kill session")
-                    bash "$SCRIPT_DIR/kill-worktree.sh" "$session_name"
-                    ;;
-                Cancel|*)
-                    exit 0
+                project|separator)
+                    continue
                     ;;
             esac
-            ;;
-        ✗)
-            # Stale metadata - should have been cleaned
-            log_warn "Stale entry: $session_name"
-            delete_session "$session_name"
-            ;;
-    esac
+        fi
+
+        break
+    done
 }
 
-# Run main directly (popup handled by keybinding)
 main
