@@ -128,7 +128,7 @@ build_project_lines() {
         while IFS= read -r git_dir; do
             local repo_path="${git_dir%/.git}"
             local repo_name
-            repo_name=$(basename "$repo_path")
+            repo_name=$(get_repo_name "$repo_path")
 
             # Skip if already in metadata
             local skip=false
@@ -426,68 +426,23 @@ cmd_subtask_col() {
 }
 
 # ── Col 4: Preview ─────────────────────────────────────────────────────
+#
+# Compact layout — fits a narrow pane:
+#
+#   session-name              ● working
+#   wt/branch · claude · 2h ago
+#   ─────────────────────────────────
+#   ### Task ID: FOO-001              ← task block (5-8 lines)
+#   **Title**: Do the thing
+#   ...
+#   ─────────────────────────────────
+#   last 15 lines of terminal output  ← gets most space
+#
 
-render_task_context() {
-    local session="$1"
-    local worktree_path
-    worktree_path=$(get_session_field "$session" "worktree_path")
-
-    # Try wt-*.md in worktree — show task block (after first ---)
-    if [ -n "$worktree_path" ] && [ -d "$worktree_path" ]; then
-        local task_file=""
-        for f in "$worktree_path"/wt-*.md; do
-            [ -f "$f" ] && task_file="$f" && break
-        done
-
-        if [ -n "$task_file" ]; then
-            echo -e "${BOLD}── Task ──────────────────────────────${NC}"
-            # Show task block: everything after first ---
-            awk '/^---[[:space:]]*$/ { found=1; next } found { print }' "$task_file" | head -18
-            return
-        fi
-    fi
-
-    # Fallback: description from metadata
-    local description
-    description=$(get_session_field "$session" "description")
-    if [ -n "$description" ]; then
-        echo -e "${BOLD}── Context ───────────────────────────${NC}"
-        echo "$description"
-        return
-    fi
-
-    # Fallback: shared context
-    if [ -n "$worktree_path" ]; then
-        local shared_ctx
-        shared_ctx="$(dirname "$worktree_path")/.shared/context.md"
-        if [ -f "$shared_ctx" ]; then
-            echo -e "${BOLD}── Project Context ───────────────────${NC}"
-            head -15 "$shared_ctx"
-            return
-        fi
-    fi
-}
-
-render_terminal_capture() {
+render_preview() {
     local session="$1"
 
-    if ! tmux has-session -t "$session" 2>/dev/null; then
-        echo -e "${DIM}  Session not running${NC}"
-        return
-    fi
-
-    local captured
-    captured=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -v '^$' | tail -15)
-    if [ -n "$captured" ]; then
-        echo "$captured"
-    else
-        echo -e "${DIM}  (no output)${NC}"
-    fi
-}
-
-render_session_header() {
-    local session="$1"
-
+    # ── Header: 2 compact lines ──
     local status branch agent_cmd created
     status=$(agent_status_icon "$session")
     branch=$(get_session_field "$session" "branch")
@@ -505,9 +460,59 @@ render_session_header() {
     local time_ago
     time_ago=$(human_time_ago "$created")
 
-    echo -e "${BOLD}${session}${NC}"
-    echo -e "${DIM}${branch:-no branch}  ${agent_cmd:-no agent}  ${time_ago}${NC}  ${status_label}"
-    echo ""
+    # Line 1: session name + status (right-aligned feel via spacing)
+    echo -e "${BOLD}${session}${NC}  ${status_label}"
+    # Line 2: metadata on one line, dimmed
+    local meta_parts=()
+    [ -n "$branch" ] && meta_parts+=("$branch")
+    [ -n "$agent_cmd" ] && meta_parts+=("$agent_cmd")
+    [ -n "$time_ago" ] && meta_parts+=("$time_ago")
+    local meta_line
+    meta_line=$(IFS=' · '; echo "${meta_parts[*]}")
+    echo -e "${DIM}${meta_line}${NC}"
+
+    # ── Task context: compact, max 8 lines ──
+    local worktree_path
+    worktree_path=$(get_session_field "$session" "worktree_path")
+    local has_context=false
+
+    if [ -n "$worktree_path" ] && [ -d "$worktree_path" ]; then
+        local task_file=""
+        for f in "$worktree_path"/wt-*.md; do
+            [ -f "$f" ] && task_file="$f" && break
+        done
+
+        if [ -n "$task_file" ]; then
+            echo -e "${DIM}───────────────────────────────────${NC}"
+            awk '/^---[[:space:]]*$/ { found=1; next } found { print }' "$task_file" | head -8
+            has_context=true
+        fi
+    fi
+
+    if ! $has_context; then
+        local description
+        description=$(get_session_field "$session" "description")
+        if [ -n "$description" ]; then
+            echo -e "${DIM}───────────────────────────────────${NC}"
+            echo "$description"
+        fi
+    fi
+
+    # ── Terminal output: gets remaining space ──
+    echo -e "${DIM}───────────────────────────────────${NC}"
+
+    if ! tmux has-session -t "$session" 2>/dev/null; then
+        echo -e "${DIM}session not running${NC}"
+        return
+    fi
+
+    local captured
+    captured=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -v '^$' | tail -20)
+    if [ -n "$captured" ]; then
+        echo "$captured"
+    else
+        echo -e "${DIM}(no output)${NC}"
+    fi
 }
 
 cmd_preview_col() {
@@ -522,23 +527,16 @@ cmd_preview_col() {
         fi
 
         if [ -z "$preview_session" ] || [ "$preview_session" = "(none)" ]; then
-            # Show project summary if available
             local repo_name
             repo_name=$(ipc_read project)
             if [ -n "$repo_name" ]; then
                 echo -e "${BOLD}${repo_name}${NC}"
-                echo -e "${DIM}───────────────────────────────────${NC}"
-                echo ""
                 echo -e "${DIM}Select a session to see details${NC}"
             else
                 echo -e "${DIM}Select a project${NC}"
             fi
         else
-            render_session_header "$preview_session"
-            render_task_context "$preview_session"
-            echo ""
-            echo -e "${BOLD}── Terminal ──────────────────────────${NC}"
-            render_terminal_capture "$preview_session"
+            render_preview "$preview_session"
         fi
 
         sleep 3
