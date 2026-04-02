@@ -623,35 +623,24 @@ setup_dashboard_window() {
         tmux rename-window -t "${hub_name}:${first_window}" "dashboard"
     fi
 
-    # Build layout right-to-left using pane IDs to avoid index shifting.
-    # Start: pane 0 = full width. We split it 3 times.
-
-    # Pane 0 starts as the full window. Assign it to preview (rightmost).
-    # Split left from it to create the other 3 panes.
-
     # Layout: 20% | 20% | 20% | 40%  (project | session | subtask | preview)
-    # Split right-to-left using pane IDs to avoid index shifting.
+    # Build left-to-right: start with project in pane 0, split right for each.
 
-    # Step 1: pane 0 = preview (will end up rightmost)
-    local p0
-    p0=$(tmux list-panes -t "${hub_name}:dashboard" -F '#{pane_id}' | head -1)
-
-    # Step 2: split left of preview → subtask-col (60% left, 40% preview)
-    local p_subtask
-    p_subtask=$(tmux split-window -t "$p0" -hb -l 60% -P -F '#{pane_id}' \
-        "bash '$SCRIPT_DIR/dashboard.sh' subtask-col")
-
-    # Step 3: split left of subtask → session-col (half of 60% = each gets 50%)
-    local p_session
-    p_session=$(tmux split-window -t "$p_subtask" -hb -l 66% -P -F '#{pane_id}' \
-        "bash '$SCRIPT_DIR/dashboard.sh' session-col '$repo_name'")
-
-    # Step 4: split left of session → project-col (half of remaining = equal thirds)
-    tmux split-window -t "$p_session" -hb -l 50% \
+    # Kill the default shell in pane 0, respawn as project-col
+    tmux respawn-pane -t "${hub_name}:dashboard" -k \
         "bash '$SCRIPT_DIR/dashboard.sh' project-col"
 
-    # Pane 0 (the original) becomes preview
-    tmux send-keys -t "$p0" "bash '$SCRIPT_DIR/dashboard.sh' preview-col" Enter
+    # Split right for session-col (80% of total)
+    tmux split-window -t "${hub_name}:dashboard" -h -l 80% \
+        "bash '$SCRIPT_DIR/dashboard.sh' session-col '$repo_name'"
+
+    # Split the rightmost pane for subtask-col (75% of remaining = 60% total)
+    tmux split-window -t "${hub_name}:dashboard" -h -l 75% \
+        "bash '$SCRIPT_DIR/dashboard.sh' subtask-col"
+
+    # Split the rightmost pane for preview-col (66% of remaining ≈ 40% total)
+    tmux split-window -t "${hub_name}:dashboard" -h -l 66% \
+        "bash '$SCRIPT_DIR/dashboard.sh' preview-col"
 
     # Focus leftmost pane (project column)
     tmux select-pane -t "${hub_name}:dashboard.0"
