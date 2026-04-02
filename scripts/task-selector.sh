@@ -270,8 +270,13 @@ spawn_task_worktrees() {
         } > "$task_output"
 
         # Spawn session (auto_switch=false for batch mode)
+        # Resolve parent: prefer hub session, fall back to current session
+        local parent_session="${repo_name}-hub"
+        if ! session_in_metadata "$parent_session"; then
+            parent_session=$(get_current_session 2>/dev/null || true)
+        fi
         spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
-            "$branch_name" "$worktree_path" "$repo_path" "$title" "false"
+            "$branch_name" "$worktree_path" "$repo_path" "$title" "false" "" "$parent_session"
         local spawn_rc=$?
 
         if [ $spawn_rc -ne 0 ]; then

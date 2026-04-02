@@ -214,8 +214,13 @@ spawn_single_task() {
     } > "$worktree_path/${branch_filename}.md"
 
     # Spawn session (no auto-switch — we handle switching ourselves)
+    # Resolve parent: prefer hub session, fall back to current session
+    local parent_session="${repo_name}-hub"
+    if ! session_in_metadata "$parent_session"; then
+        parent_session=$(get_current_session 2>/dev/null || true)
+    fi
     spawn_session_for_worktree "$session_name" "$repo_name" "$topic" \
-        "$branch_name" "$worktree_path" "$repo_path" "" "false"
+        "$branch_name" "$worktree_path" "$repo_path" "" "false" "" "$parent_session"
     [ $? -ne 0 ] && return 1
 
     # Write agent config
