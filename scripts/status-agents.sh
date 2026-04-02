@@ -203,4 +203,4 @@ main() {
     echo "#[fg=#585b70]▏${output} #[fg=#585b70]▕"
 }
 
-main
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && main

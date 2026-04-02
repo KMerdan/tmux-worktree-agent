@@ -20,6 +20,7 @@ default_task_prompt_key="G"
 default_register_key="A"
 default_sidebar_key="S"
 default_open_task_key="E"
+default_dashboard_key="H"
 
 # Get tmux options with defaults
 get_tmux_option() {
@@ -58,6 +59,7 @@ task_prompt_key=$(get_tmux_option "@worktree-task-prompt-key" "$default_task_pro
 register_key=$(get_tmux_option "@worktree-register-key" "$default_register_key")
 sidebar_key=$(get_tmux_option "@worktree-sidebar-key" "$default_sidebar_key")
 open_task_key=$(get_tmux_option "@worktree-open-task-key" "$default_open_task_key")
+dashboard_key=$(get_tmux_option "@worktree-dashboard-key" "$default_dashboard_key")
 
 # Export configuration for scripts
 tmux set-environment -g WORKTREE_PATH "$worktree_path"
@@ -82,6 +84,7 @@ tmux bind-key "$task_prompt_key" display-popup -E -w 95% -h 95% -d "#{pane_curre
 tmux bind-key "$register_key" display-popup -E -w 85% -h 85% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/register-session.sh"
 tmux bind-key "$sidebar_key" run-shell "$CURRENT_DIR/scripts/task-sidebar.sh toggle"
 tmux bind-key "$open_task_key" display-popup -E -w 90% -h 90% -d "#{pane_current_path}" "$CURRENT_DIR/scripts/open-task.sh"
+tmux bind-key "$dashboard_key" run-shell "$CURRENT_DIR/scripts/dashboard.sh open"
 
 # Ensure directories exist
 mkdir -p "$worktree_path"
