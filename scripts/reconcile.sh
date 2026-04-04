@@ -72,7 +72,7 @@ main() {
 
     if [ -d "$worktree_base" ]; then
         # Find all git directories in worktree base
-        find "$worktree_base" -type d -name ".git" 2>/dev/null | while read -r git_dir; do
+        find "$worktree_base" -name ".git" 2>/dev/null | while read -r git_dir; do
             local wt_path
             wt_path=$(dirname "$git_dir")
 

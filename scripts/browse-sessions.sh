@@ -153,7 +153,7 @@ build_tree() {
             done
             $skip && continue
             printf " ${DIM}%s${NC}\t%s\tuntracked\t%s\n" "$uname" "$uname" "$upath"
-        done < <(find "$search_dir" -maxdepth 2 -type d -name .git 2>/dev/null | sort)
+        done < <(find "$search_dir" -maxdepth 2 -name .git 2>/dev/null | sort)
     fi
 }
 
