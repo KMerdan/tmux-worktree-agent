@@ -8,9 +8,12 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 
 **Key Capabilities:**
 - One-keybind workflow to create isolated worktree + tmux session
-- Fuzzy search browser (fzf) for switching between sessions
-- Automatic orphan detection for sessions/worktrees
+- Session browser (fzf tree view) for switching between sessions with live preview
+- Task system: Markdown DSL for defining tasks, batch dispatch, orchestrator mode
+- `wta` CLI: non-interactive interface for orchestrator agents to drive the plugin
+- Automatic orphan detection and ghost session recovery
 - Agent-agnostic (works with Claude Code, Gemini, OpenCode, Codex, etc.)
+- Cross-platform (macOS + Ubuntu 22.04+)
 - TPM (Tmux Plugin Manager) integration
 
 ## Architecture
@@ -28,16 +31,17 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 
 **lib/metadata.sh** - JSON metadata management library
 - All session data persists in `.worktree-sessions.json` as structured JSON
-- Each session stores: repo, topic, branch, worktree_path, main_repo_path, created_at, agent_running
-- Functions: save_session(), get_session(), delete_session(), list_sessions(), find_session_by_path()
-- Orphan detection: clean_orphaned_metadata(), get_orphaned_sessions(), get_orphaned_worktrees()
+- Each session stores: repo, topic, branch, worktree_path, main_repo_path, created_at, agent_running, description, agent_cmd, parent_branch, parent_session
+- Functions: save_session(), get_session_field(), delete_session(), list_sessions(), find_sessions_by_repo(), find_session_by_path()
+- Orphan detection: clean_orphaned_metadata() removes entries where both session and worktree are gone
 - Uses jq for all JSON operations
 
 **scripts/utils.sh** - Shared utilities
 - User interaction functions: prompt(), confirm(), choose()
-- Git helpers: is_git_repo(), get_repo_root(), get_current_branch(), get_repo_name()
-- Tmux helpers: session_exists(), create_tmux_session(), switch_to_session()
+- Git helpers: is_git_repo(), get_repo_root(), get_current_branch(), get_repo_name(), get_default_branch()
+- Tmux helpers: session_exists(), create_tmux_session(), switch_to_session(), spawn_session_for_worktree()
 - Path sanitization: sanitize_name() (converts "/" to "-", lowercases, removes spaces)
+- Agent config: write_agent_config() (task CLAUDE.md for sub-agents), inject_orchestrator_config() (wta docs for main agent)
 - Fallback behavior: Uses gum if available, otherwise falls back to read/select
 - Special handling: prompt() reads from /dev/tty to work in popup/split windows
 
@@ -53,14 +57,20 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 - Launches agent based on @worktree-auto-agent setting (on/off/prompt)
 - Error handling: Manual error handling without set -e for better user feedback
 
-**scripts/browse-sessions.sh** - fzf browser for sessions
-- Status indicators:
-  - Session: ● (active), ○ (worktree only), ⚠ (session only), ✗ (stale)
-  - Agent: ● (working), ○ (waiting), ◌ (stopped), ─ (N/A)
+**scripts/browse-sessions.sh** - Session browser (prefix + w)
+- Tree view grouped by project with status icons and descriptions
+- Status indicators: ● (active/working), ⏎ (needs input), ◌ (idle), ✗ (dead)
 - Auto-cleanup of stale metadata on launch
-- Preview pane shows: session info, active windows, git status
-- Actions: Enter (switch), Ctrl-d (delete), Ctrl-r (refresh), Tab (toggle preview)
-- Runs in tmux popup if tmux >= 3.2, otherwise splits
+- Preview pane shows: agent status, task context, terminal output
+- Actions: Enter (switch/recover), Ctrl-N (create), Ctrl-T (tasks), Ctrl-D (kill), Ctrl-R (refresh)
+- Ghost session recovery: detects dead sessions with surviving worktrees, offers recreate/delete
+- Untracked project detection: scans $PROJECTS directory for repos not yet managed
+
+**scripts/wta.sh** - Non-interactive CLI for orchestrator agents
+- Designed to be called by AI agents via bash (no fzf, no prompts)
+- Read-only: status, broadcasts, capture, topology, diff
+- Mutating: spawn (worktree + session + agent), send (text to pane), kill (full cleanup)
+- Injected into project CLAUDE.md when "Generate task.md" is triggered via prefix+G
 
 **scripts/kill-worktree.sh** - Cleanup workflow
 - Removes session, git worktree, and metadata
@@ -79,7 +89,16 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 ### Directory Structure
 
 ```
-~/.worktrees/<repo-name>/<topic>/  # Worktree storage
+~/.worktrees/<repo-name>/
+  ├── <topic>/                    # Git worktree (created by plugin)
+  │   ├── .shared/ → ../.shared   # Symlink to shared dir
+  │   ├── wt-<topic>.md           # Task file (preamble + task block)
+  │   └── CLAUDE.md               # Agent config (task-scoped, do NOT commit)
+  └── .shared/
+      ├── context.md              # Shared preamble (read-only for agents)
+      └── broadcasts/
+          └── TASK-<id>.md        # Completion broadcast per agent
+
 ~/.tmux/plugins/tmux-worktree-agent/.worktree-sessions.json  # Metadata
 ```
 
@@ -99,10 +118,13 @@ chmod +x scripts/*.sh
 tmux source-file ~/.tmux.conf
 
 # 4. Test interactively using keybindings:
-# - prefix + C-w (create worktree)
 # - prefix + w (browse sessions)
+# - prefix + C-w (create worktree)
 # - prefix + W (quick create)
 # - prefix + K (kill worktree)
+# - prefix + T (task selector)
+# - prefix + G (task prompt menu)
+# - prefix + a (jump to next waiting agent)
 # - prefix + R (reconcile)
 
 # 5. Check for errors in tmux command output
@@ -190,11 +212,15 @@ When making changes, test these scenarios:
 
 1. **JSON metadata over tmux environment variables** - Persistent, queryable, supports complex data structures
 2. **Popup-first UI** - Better UX than split windows, with automatic fallback
-3. **Tilde expansion everywhere** - Users expect ~/path to work
-4. **Agent-agnostic** - Works with any CLI tool, not tied to specific agent
-5. **Orphan handling** - Detects and repairs inconsistent states automatically
-6. **Sanitized naming** - Filesystem-safe session and directory names
-7. **Interactive prompts from /dev/tty** - Works in popup/split window contexts
+3. **Browser as single entry point** - No dashboard/hub concept; the fzf browser (prefix+w) handles all navigation
+4. **Tilde expansion everywhere** - Users expect ~/path to work
+5. **Agent-agnostic** - Works with any CLI tool, not tied to specific agent
+6. **Orphan handling** - Detects and repairs inconsistent states automatically
+7. **Sanitized naming** - Filesystem-safe session and directory names
+8. **Interactive prompts from /dev/tty** - Works in popup/split window contexts
+9. **Orchestrator awareness is opt-in** - Only injected when "Generate task.md" is triggered; sub-agents have no plugin knowledge
+10. **wta CLI is non-interactive** - Designed for agent consumption (no fzf, no prompts, no /dev/tty reads)
+11. **Two kinds of sub-agents** - wta spawn for file-modifying work (isolated worktrees), built-in agent sub-agents for read-only research
 
 ## Common Issues & Solutions
 

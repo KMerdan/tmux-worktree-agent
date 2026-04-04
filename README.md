@@ -4,7 +4,7 @@
     <strong>Human multithreading for AI-assisted development</strong>
   </p>
   <p align="center">
-    Run multiple AI coding agents in parallel — a persistent dashboard monitors them all, one keystroke jumps to the next agent that needs you.
+    Run multiple AI coding agents in parallel — each in its own branch, its own directory, its own tmux session. One keystroke to create, browse, or jump to any agent.
   </p>
   <p align="center">
     <a href="#-quick-start"><img src="https://img.shields.io/badge/-Quick_Start-blue?style=for-the-badge" alt="Quick Start"/></a>
@@ -20,7 +20,7 @@
   <img src="docs/demo.gif" alt="tmux-worktree-agent demo" width="800"/>
 </p> -->
 
-<p align="center"><em>Dashboard home base with live agent preview &middot; aggregated status bar &middot; one-key jump to agents needing attention</em></p>
+<p align="center"><em>Session browser with live agent preview &middot; aggregated status bar &middot; one-key jump to agents needing attention</em></p>
 
 ---
 
@@ -30,11 +30,11 @@ You're using Claude Code / Gemini CLI / Codex to write features. You want to wor
 
 But one terminal, one branch, one agent session can only do one thing.
 
-**tmux-worktree-agent** removes the bottleneck: press one key, get a fully isolated development context — its own branch, its own directory, its own agent. A persistent dashboard lets you monitor everything at a glance.
+**tmux-worktree-agent** removes the bottleneck: press one key, get a fully isolated development context — its own branch, its own directory, its own agent. A session browser lets you monitor everything at a glance.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Requirements
 
@@ -83,62 +83,47 @@ Add to your `~/.bashrc` or `~/.zshrc`:
 source ~/.tmux/plugins/tmux-worktree-agent/scripts/shell-init.sh
 ```
 
-This gives you the `wta` command and session banners.
+This gives you session banners when entering plugin-managed sessions.
 
 ### The 3-Key Workflow
 
 | Keybind | What it does |
 |:--------|:-------------|
-| `prefix + H` | **Dashboard** — open the home base: see all agents, spawn new ones, jump to any session |
+| `prefix + w` | **Browse** — tree view of all projects and sessions, with live preview |
 | `prefix + a` | **Jump** — instantly switch to the next agent waiting for your input |
 | `prefix + ?` | **Help** — searchable keybinding reference with git quick-actions |
-
-Or start from the command line:
-
-```bash
-cd ~/projects/my-app
-wta                          # opens the dashboard for this repo
-```
 
 That's it. You're running.
 
 ---
 
-## ✨ Features
+## Features
 
-### Dashboard
+### Session Browser
 
-The dashboard is your home base — a persistent tmux session with a split-pane layout:
+The browser (`prefix + w`) is your central navigation — a tree view of all projects and sessions with live preview:
 
 ```
-┌──────────────────────────────────────────┬──────────────────────────────────┐
-│  my-app-hub                              │                                  │
-│  ⏎ 2 need you · ● 3 working · ◌ 1 idle  │  ┌─ my-app-auth ──────────────┐  │
-│  ─────────────────────────────────────   │  │ Branch:  wt/auth-fix        │  │
-│                                          │  │ Agent:   claude             │  │
-│   need attention                         │  │ Status:  ⏎ Needs your input │  │
-│  ⏎ ● my-app-auth    claude   wt/auth    │  │ Created: 2h ago             │  │
-│  ⏎ ○ my-app-api     codex    wt/api     │  │                             │  │
-│  ── working ──────────────────           │  │ Last Output:                │  │
-│  ● ● my-app-tests   claude   wt/test    │  │ ─────────────────────────── │  │
-│  ● ● my-app-ui      claude   wt/ui      │  │  I need permission to       │  │
-│  ── idle ─────────────────────           │  │  modify src/auth.ts.        │  │
-│  ◌ ○ my-app-config  ─        wt/cfg     │  │  (Esc to cancel)            │  │
-│                                          │  │                             │  │
-│  ─────────────────────────────────────   │  │ Git: 2 files changed        │  │
-│  Enter:jump ^N:create ^T:tasks           │  │  M src/auth.ts              │  │
-│  ^G:prompts ^D:kill ^R:refresh           │  │  M tests/auth.test.ts       │  │
-└──────────────────────────────────────────┴──────────────────────────────────┘
-  LEFT: session list (attention-first)       RIGHT: live agent preview
+  my-app  ⏎2 ●3                         │  my-app-auth  ⏎ needs input
+   ⏎ auth  Fix OAuth flow                │  wt/auth-fix · claude · 2h ago
+   ● tests  Write e2e tests              │  ─────────────────────────────
+   ● ui  Refactor components             │  TASK-auth
+     ⏎ ui-mobile  Mobile responsive      │  Fix OAuth flow
+  ───��────────────────────────────        │  ─────────────────────────────
+  other-repo                              │  I need permission to modify
+                                          │  src/auth.ts.
+  Enter:jump ^N:create ^T:tasks           │  (Esc to cancel)
+  ^D:kill ^R:refresh                      │
 ```
 
-- **Left pane** — persistent fzf list of all sessions, sorted by who needs you first
-- **Right pane** — live preview: last terminal output, git status, commits (refreshes every 3s)
-- **Keyboard shortcuts** — Ctrl-N (create worktree), Ctrl-T (task selector), Ctrl-G (task prompts), Ctrl-D (kill), Ctrl-R (refresh)
+- **Left** — tree of projects grouped by repo, sessions with status icons and descriptions
+- **Right** — live preview: agent status, task context, terminal output, git status
+- **Actions** — Enter (switch), Ctrl-N (create), Ctrl-T (tasks), Ctrl-D (kill), Ctrl-R (refresh)
+- **Ghost recovery** — selecting a dead session offers to recreate or delete it
 
 ### Status Bar
 
-Aggregated counts replace per-session lists — constant-width regardless of how many agents you run:
+Aggregated counts — constant-width regardless of how many agents you run:
 
 ```
 ▏⏎2 ●3 ◌1▕
@@ -167,8 +152,31 @@ Attention-first: categories that need you appear first. Zero-count categories ar
 | Feature | Description |
 |:--------|:------------|
 | **Markdown task DSL** | Define tasks in structured Markdown with IDs, priorities, and dependency graphs |
-| **Batch dispatch** | Multi-select tasks from `task.md` and spawn all sessions at once |
-| **Task prompt menu** | Unified entry for generating, starting, updating, and merging tasks |
+| **Batch dispatch** | Multi-select tasks from `task.md` and spawn all sessions at once (`prefix + T`) |
+| **Task prompt menu** | Unified entry for generating, starting, updating, and merging tasks (`prefix + G`) |
+| **Orchestrator awareness** | When generating task.md, the plugin injects `wta` CLI docs into your CLAUDE.md so the agent can drive the workflow |
+
+### Orchestrator Mode (wta CLI)
+
+When you use `prefix + G` > "Generate task.md", the plugin injects orchestrator awareness into your project's CLAUDE.md. The main agent (the one holding task.md) can then use the `wta` CLI to drive the entire workflow:
+
+```bash
+# Read-only — agent uses freely
+wta status [repo]              # Session topology + agent state
+wta broadcasts <repo>          # Read completion broadcasts
+wta capture <session>          # Terminal output of a session
+wta topology <task.md>         # Task dependency graph with live state
+wta diff <session>             # Git diff vs base branch
+
+# Mutating — agent confirms with you first
+wta spawn <task.md> <task-id>  # Create worktree + session + start agent
+wta send <session> <text>      # Send instruction to an agent
+wta kill <session>             # Full cleanup
+```
+
+The orchestrator agent can spawn sub-tasks, monitor their progress, read broadcasts, guide stuck agents, and help merge completed work — all while you supervise.
+
+**Important**: Only the orchestrator agent gets `wta` awareness. Sub-task agents remain focused on their individual task with no knowledge of the plugin.
 
 ### Context & Collaboration
 
@@ -185,18 +193,19 @@ Attention-first: categories that need you appear first. Zero-count categories ar
 |:--------|:------------|
 | **Orphan detection** | Detect and repair session/worktree/metadata/branch mismatches |
 | **Auto-cleanup** | Stale metadata, orphaned `.shared/` and `.prompts/` directories are purged |
+| **Ghost session recovery** | Browser detects sessions that died but still have worktrees — offers recreate or delete |
 | **Session registration** | Adopt existing tmux sessions into the plugin's management |
 | **Graceful destroy** | `prefix + K` cleans up session + worktree + branch + metadata in correct order |
 
 ---
 
-## 📖 Keybinding Reference
+## Keybinding Reference
 
 ### Primary
 
 | Keybind | Description |
 |:--------|:------------|
-| `prefix + H` | Dashboard — home base for monitoring and managing all agents |
+| `prefix + w` | Session browser — tree view of all projects and sessions |
 | `prefix + a` | Jump to next agent waiting for input |
 | `prefix + ?` | Help — searchable keybinding reference + git quick-actions |
 
@@ -221,8 +230,7 @@ Attention-first: categories that need you appear first. Zero-count categories ar
 
 | Keybind | Description |
 |:--------|:------------|
-| `prefix + w` | fzf popup browser (alternative to dashboard) |
-| `prefix + S` | Toggle task sidebar (alternative to dashboard) |
+| `prefix + S` | Toggle task sidebar |
 | `prefix + O` | Window/pane layout operations |
 | `prefix + R` | Reconcile — scan and repair orphaned sessions/worktrees |
 | `prefix + D` | Edit session description |
@@ -230,9 +238,8 @@ Attention-first: categories that need you appear first. Zero-count categories ar
 All keybindings are customizable via `~/.tmux.conf`:
 
 ```tmux
-set -g @worktree-dashboard-key 'H'
-set -g @worktree-attention-key 'a'
 set -g @worktree-browser-key 'w'
+set -g @worktree-attention-key 'a'
 set -g @worktree-create-key 'C-w'
 set -g @worktree-quick-create-key 'W'
 # ... see Configuration section for full list
@@ -240,7 +247,7 @@ set -g @worktree-quick-create-key 'W'
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ```tmux
 # ~/.tmux.conf
@@ -273,47 +280,43 @@ set -g @worktree-agent-list 'claude'
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ### System Overview
-
-<p align="center">
-  <img src="docs/architecture.png" alt="Architecture Overview" width="800"/>
-</p>
 
 The plugin is structured as **five layers of capability**:
 
 ```
-Layer 5  │  Monitoring        dashboard · aggregated status bar · quick-jump
+Layer 5  │  Orchestration     wta CLI · orchestrator CLAUDE.md · agent-driven spawning
 Layer 4  │  Collaboration     .shared/context.md · broadcasts · merge-orchestrator
-Layer 3  │  Task Modeling      task-parser · task-selector · task-prompt-menu
-Layer 2  │  State Persistence  metadata.json · browse-sessions · reconcile
-Layer 1  │  Resource Isolation  git worktree · tmux session · AI agent CLI
+Layer 3  │  Task Modeling     task-parser · task-selector · task-prompt-menu
+Layer 2  │  State Persistence metadata.json · browse-sessions · reconcile
+Layer 1  │  Resource Isolation git worktree · tmux session · AI agent CLI
 ```
 
 Each layer answers a progressively harder question:
 
-1. **How do I isolate tasks?** -- worktree + session + agent per task
-2. **How do I remember and recover?** -- persistent JSON metadata + runtime reconciliation
-3. **How do I go from plan to execution?** -- Markdown task DSL + batch dispatch
-4. **How do agents collaborate and converge?** -- shared context + broadcasts + merge orchestration
-5. **How do I monitor everything without losing my mind?** -- dashboard + aggregated status bar + quick-jump
+1. **How do I isolate tasks?** — worktree + session + agent per task
+2. **How do I remember and recover?** — persistent JSON metadata + runtime reconciliation
+3. **How do I go from plan to execution?** — Markdown task DSL + batch dispatch
+4. **How do agents collaborate and converge?** — shared context + broadcasts + merge orchestration
+5. **How do I let the agent help orchestrate?** — `wta` CLI + injected orchestrator awareness
 
 ### Module Map
 
 ```
 worktree-agent.tmux                   # Entry: config + keybind assembly
 ├── scripts/
-│   ├── dashboard.sh                  # Persistent monitoring dashboard
+│   ├── wta.sh                        # Non-interactive CLI for orchestrator agents
+│   ├── browse-sessions.sh            # Session browser (tree view + preview)
 │   ├── next-attention.sh             # Quick-jump to next waiting agent
 │   ├── create-worktree.sh            # Create worktree + session + agent
-│   ├── browse-sessions.sh            # fzf session browser + recovery
 │   ├── kill-worktree.sh              # Destroy session + worktree + branch
 │   ├── reconcile.sh                  # System-wide consistency check
 │   ├── status-agents.sh              # Status bar agent detection
-│   ├── shell-init.sh                 # Session banner + wta CLI entry
+│   ├── shell-init.sh                 # Session banner on shell init
 │   ├── task-selector.sh              # Batch dispatch from Markdown
-│   ├── task-sidebar.sh               # Persistent task kanban
+│   ├── task-sidebar.sh               # Persistent task sidebar
 │   ├── task-prompt-menu.sh           # Task lifecycle prompt hub
 │   ├── task-preview.sh               # fzf task preview
 │   ├── merge-orchestrator.sh         # Merge prompt generation
@@ -321,9 +324,12 @@ worktree-agent.tmux                   # Entry: config + keybind assembly
 │   ├── register-session.sh           # Adopt existing sessions
 │   ├── session-description.sh        # Session semantic labels
 │   ├── session-info.sh               # Status line formatting
+│   ├── browse-preview.sh             # Browser preview renderer
 │   ├── prompt-preview.sh             # fzf prompt preview helper
 │   ├── utils.sh                      # Shared utilities (git, tmux, path helpers)
 │   ├── window-pane-ops.sh            # Layout operations
+│   ├── auto-rename-windows.sh        # Window name sync from metadata
+│   ├── status-repo.sh                # Repo name for status-left
 │   └── show-helper-fzf.sh            # Help panel
 └── lib/
     ├── metadata.sh                   # JSON metadata CRUD
@@ -360,10 +366,6 @@ The script handles real-world edge cases: duplicate session names (attach / rena
 
 ### Context Sharing Model
 
-<p align="center">
-  <img src="docs/context-sharing.png" alt="Context Sharing Model" width="800"/>
-</p>
-
 When tasks are dispatched, context is split into three layers:
 
 | Layer | Location | Scope | Mutability |
@@ -380,24 +382,30 @@ When tasks are dispatched, context is split into three layers:
 
 ### Task Lifecycle
 
-<p align="center">
-  <img src="docs/task-lifecycle.png" alt="Task Lifecycle" width="800"/>
-</p>
-
 ```mermaid
 flowchart LR
-    A["📝 Model<br/>Generate task.md"] --> B["📋 Dispatch<br/>task-selector / dashboard"]
-    B --> C["🤖 Execute<br/>Agent per worktree"]
-    C --> D["📡 Broadcast<br/>.shared/broadcasts/"]
-    D --> E["🔀 Converge<br/>merge-orchestrator"]
+    A["Model<br/>Generate task.md"] --> B["Dispatch<br/>wta spawn / task-selector"]
+    B --> C["Execute<br/>Agent per worktree"]
+    C --> D["Broadcast<br/>.shared/broadcasts/"]
+    D --> E["Converge<br/>merge-orchestrator"]
     E -.->|"Update status"| A
 ```
 
-1. **Model** -- Generate structured `task.md` with IDs, priorities, and dependency graphs
-2. **Dispatch** -- Multi-select tasks from the dashboard or task selector, batch-create worktree sessions
-3. **Execute** -- Each agent works in its own isolated worktree with injected context
-4. **Broadcast** -- Agents write change notifications for cross-task awareness
-5. **Converge** -- Merge orchestrator verifies diffs against broadcasts, merges in dependency order
+1. **Model** — Generate structured `task.md` with IDs, priorities, and dependency graphs (`prefix + G`)
+2. **Dispatch** — Spawn tasks via `wta spawn` (orchestrator agent) or multi-select in task selector (`prefix + T`)
+3. **Execute** — Each agent works in its own isolated worktree with injected context
+4. **Broadcast** — Agents write change notifications for cross-task awareness
+5. **Converge** — Merge orchestrator verifies diffs against broadcasts, merges in dependency order
+
+### Orchestrator vs Task Agent
+
+| | Orchestrator (main agent) | Task agent (spawned) |
+|:--|:--|:--|
+| **Location** | Main repo | Git worktree (`~/.worktrees/<repo>/<topic>/`) |
+| **Knows about plugin** | Yes — `wta` CLI in CLAUDE.md | No — only knows task file + `.shared/` |
+| **Can spawn others** | Yes — `wta spawn` | No (unless recursively promoted) |
+| **Lifecycle** | You talk to it directly | Runs independently until done |
+| **Built-in sub-agents** | For read-only research only | For their task work |
 
 ### Agent Status Detection
 
@@ -410,7 +418,7 @@ flowchart LR
 
 ---
 
-## 📝 Task File Format
+## Task File Format
 
 Tasks are defined in Markdown with a simple structure:
 
@@ -459,15 +467,15 @@ E2E tests for the OAuth flow...
 
 ---
 
-## 🔌 Optional Integrations
+## Optional Integrations
 
-### Status bar -- repo name
+### Status bar — repo name
 
 ```tmux
 set -g status-left '#(~/.tmux/plugins/tmux-worktree-agent/scripts/status-repo.sh) '
 ```
 
-Agent status is **automatically appended** to `status-right` -- no configuration needed.
+Agent status is **automatically appended** to `status-right` — no configuration needed.
 
 ### Window auto-renaming
 
@@ -477,20 +485,30 @@ set -g status-right '#(~/.tmux/plugins/tmux-worktree-agent/scripts/auto-rename-w
 
 ---
 
-## 🔧 Troubleshooting
+## Platform Support
+
+Tested on **macOS** and **Ubuntu 22.04+**. All scripts use portable constructs:
+- `#!/usr/bin/env bash` shebangs
+- Cross-platform `date` handling (BSD `-j -f` with GNU `-d` fallback)
+- No `sed -i`, `readlink -f`, `stat`, or other platform-specific tools
+- Standard `awk` (no gawk-isms)
+
+---
+
+## Troubleshooting
 
 | Problem | Solution |
 |:--------|:---------|
 | Prompts not responding in popups | All prompts read from `/dev/tty`. Check if a wrapper closes stdin. |
 | Keybindings do nothing | `display-popup` requires tmux 3.2+. Check with `tmux -V`. |
 | Sessions appear but don't exist | Run `prefix + R` (reconcile). Stale entries are auto-cleaned. |
-| Can't create worktree -- branch conflict | Git doesn't allow the same branch in two worktrees. Use a different branch. |
+| Can't create worktree — branch conflict | Git doesn't allow the same branch in two worktrees. Use a different branch. |
 | Path expansion not working | Set `@worktree-path` before the plugin loads in `~/.tmux.conf`. |
-| Dashboard shows no sessions | Make sure you're in a git repo. The dashboard filters by repo. |
+| Browser shows no sessions | Make sure you're in a git repo. The browser filters by repo. |
 
 ---
 
-## 📄 License
+## License
 
 [MIT](LICENSE)
 
