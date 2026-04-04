@@ -558,6 +558,115 @@ Do NOT \`git add\` these files. Only commit files related to your actual task fi
 AGENTCFG
 }
 
+# Inject or update orchestrator awareness into a project's CLAUDE.md
+# Called when "Generate task.md" is triggered — gives the main agent
+# knowledge of the wta CLI so it can drive the plugin.
+inject_orchestrator_config() {
+    local repo_path="$1"
+
+    local claude_md="$repo_path/CLAUDE.md"
+    local wta_path="$PLUGIN_DIR/scripts/wta.sh"
+    local start_marker="<!-- wta:orchestrator:start -->"
+    local end_marker="<!-- wta:orchestrator:end -->"
+
+    # Write section to a temp file (avoids heredoc quoting issues in bash)
+    local section_file
+    section_file=$(mktemp)
+    cat > "$section_file" <<WTA_EOF
+${start_marker}
+
+## Orchestrator — tmux-worktree-agent
+
+You are the **orchestrator agent**. You sit in the main repo and coordinate task agents
+working in parallel across git worktrees. A tmux plugin (\`tmux-worktree-agent\`) manages
+sessions, worktrees, and metadata — you interact with it through the \`wta\` CLI below.
+
+### Two kinds of sub-agents — do not confuse them
+
+| | **wta spawn** (worktree agent) | **Your built-in sub-agent** (e.g. Agent tool) |
+|---|---|---|
+| **Where** | Separate tmux session, separate git worktree, separate branch | Inside YOUR session, your worktree, your branch |
+| **Isolation** | Full filesystem isolation — can modify files without conflicts | Shares your working directory — concurrent edits risk conflicts |
+| **When to use** | Tasks that modify files and need their own branch (from task.md) | Research, analysis, reading code, planning — anything read-only within this session |
+| **Lifecycle** | Persists after you stop — runs independently until done | Lives and dies with your conversation turn |
+
+**Rule**: Use \`wta spawn\` for any task that writes/modifies files. Use your built-in sub-agents
+only for read-only work within this session (exploring code, searching, analyzing).
+Never use your built-in sub-agents to do the work described in task.md — that work
+must go through \`wta spawn\` so each task gets its own branch and worktree.
+
+### wta CLI
+
+Run commands with: \`bash ${wta_path} <command> [args...]\`
+
+**Read-only** (use freely):
+
+| Command | Description |
+|---|---|
+| \`wta status [repo]\` | All sessions with agent state (active/prompt/off/dead) |
+| \`wta broadcasts <repo>\` | Read completion broadcasts from \`.shared/broadcasts/\` |
+| \`wta capture <session>\` | Last 40 lines of a session's terminal output |
+| \`wta topology <task.md>\` | Task dependency graph with live completion state |
+| \`wta diff <session>\` | Git diff of session's branch vs its base branch |
+
+**Mutating** (confirm with the user before running):
+
+| Command | Description |
+|---|---|
+| \`wta spawn <task.md> <task-id>\` | Create worktree + tmux session + start agent for a task |
+| \`wta send <session> <text>\` | Paste text into an agent's terminal and hit Enter |
+| \`wta kill <session>\` | Full cleanup: kill session, remove worktree, delete branch + metadata |
+
+### Workflow
+
+1. **Generate task.md** — break work into non-overlapping tasks (you may have just done this)
+2. **Spawn tasks** — \`wta spawn task.md TASK-xxx\` for each task (confirm with user first)
+3. **Monitor** — \`wta status\` and \`wta capture <session>\` to watch progress
+4. **Read broadcasts** — \`wta broadcasts <repo>\` to see completed work
+5. **Guide stuck agents** — \`wta send <session> "<instruction>"\` if an agent needs help
+6. **Review & merge** — \`wta diff <session>\` to review, then merge branches in dependency order
+7. **Clean up** — \`wta kill <session>\` for finished/failed sessions
+
+### Rules
+
+- **Never modify \`.worktree-sessions.json\` directly** — always use \`wta\` commands
+- **Confirm with the user** before running any mutating command (spawn, send, kill)
+- **Merge in dependency order** — if TASK-B depends on TASK-A, merge A first
+- **Check broadcasts before merging** — verify the broadcast matches the actual diff
+- Task agents write their results to \`.shared/broadcasts/TASK-<id>.md\`
+- Task agents read shared context from \`.shared/context.md\` (seeded from task.md preamble)
+- Branch convention: each task gets \`wt/<sanitized-task-id>\`
+- Task agents have NO knowledge of this plugin or \`wta\` — they only know their task file,
+  \`.shared/context.md\`, and \`.shared/broadcasts/\`. Do not assume they can run wta commands.
+
+${end_marker}
+WTA_EOF
+
+    if [ -f "$claude_md" ]; then
+        if grep -q "$start_marker" "$claude_md"; then
+            # Replace existing section between markers
+            local before_file after_file tmpfile
+            before_file=$(mktemp)
+            after_file=$(mktemp)
+            tmpfile=$(mktemp)
+            awk "/$start_marker/{exit} {print}" "$claude_md" > "$before_file"
+            awk "found{print} /$end_marker/{found=1}" "$claude_md" > "$after_file"
+            cat "$before_file" "$section_file" "$after_file" > "$tmpfile"
+            mv "$tmpfile" "$claude_md"
+            rm -f "$before_file" "$after_file"
+        else
+            # Append to existing file
+            echo "" >> "$claude_md"
+            cat "$section_file" >> "$claude_md"
+        fi
+    else
+        # Create new file
+        cp "$section_file" "$claude_md"
+    fi
+
+    rm -f "$section_file"
+}
+
 # Set up .shared/ directory and symlink for a worktree
 # Creates ~/.worktrees/<repo>/.shared/broadcasts/ if needed, symlinks into worktree
 setup_shared_dir() {

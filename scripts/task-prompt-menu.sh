@@ -122,15 +122,25 @@ prompt_generate_tasks() {
 
     local current_branch=""
     local short_sha=""
-    if cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel >/dev/null 2>&1; then
-        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-        short_sha=$(git rev-parse --short HEAD 2>/dev/null)
+    local repo_path=""
+    repo_path=$(cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || true
+    if [ -n "$repo_path" ]; then
+        current_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        short_sha=$(cd "$repo_path" && git rev-parse --short HEAD 2>/dev/null)
+    fi
+
+    # Inject orchestrator config into project CLAUDE.md
+    if [ -n "$repo_path" ]; then
+        inject_orchestrator_config "$repo_path"
+        log_info "Updated orchestrator config in CLAUDE.md"
     fi
 
     local branch_strategy=""
     if [ -n "$current_branch" ] && [ -n "$short_sha" ]; then
         branch_strategy="- Branch/merge strategy: all tasks branch from \`${current_branch}\` at commit \`${short_sha}\`. Merging back into \`${current_branch}\` is handled by the orchestrator — agents must NOT merge."
     fi
+
+    local wta_path="$PLUGIN_DIR/scripts/wta.sh"
 
     local text='Based on what we discussed, create a `task.md` file in the repository root that breaks down the work into separate, non-conflicting tasks. Each task must be independently implementable in its own git worktree without merge conflicts with other tasks.
 
@@ -207,7 +217,7 @@ Rules:
 1. Every task block MUST start with `### Task ID: TASK-<id>` — the parser keys on this
 2. Every task block MUST have `**Title**:` on its own line — the parser requires this
 3. Tasks MUST be separated by `---` (horizontal rule on its own line)
-4. The preamble (before first `---`) is shared context — make it rich and complete
+4. The preamble (before first `---`) is shared context ��� make it rich and complete
 5. Task IDs: short, descriptive kebab-case (e.g., TASK-auth, TASK-ocr, TASK-api-routes). Each task will be spawned on a `wt/<sanitized-task-id>` branch in its own worktree
 6. **Scoped Files** is critical: each task MUST list exactly which files it will touch. Two tasks MUST NOT have overlapping scoped files — this prevents merge conflicts across worktrees
 7. **Shared Interfaces**: when tasks need to coordinate (e.g., one creates a type another imports), define the contract explicitly so both agents agree on the shape
@@ -218,6 +228,8 @@ Rules:
     - `.shared/context.md` — seeded from the preamble, read-only for agents
     - `.shared/broadcasts/` — each agent writes ONLY `.shared/broadcasts/TASK-<its-id>.md` to communicate changes that affect other tasks
     Include a note in the preamble telling agents about this shared knowledge protocol so they know to check `.shared/broadcasts/` for updates from other tasks and write their own when making cross-task changes.
+
+After writing task.md, you can use the `wta` CLI to spawn and manage sub-agent sessions. Check your CLAUDE.md for the full orchestrator reference — it was just updated with the available commands.
 
 Write the file now.'
 
