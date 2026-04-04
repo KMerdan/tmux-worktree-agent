@@ -49,7 +49,6 @@ render_project() {
     local total=0 cp=0 ca=0 co=0 cd=0
     while IFS= read -r s; do
         [ -z "$s" ] && continue
-        [[ "$s" == *-hub ]] && continue
         total=$((total + 1))
         local st
         st=$(agent_status_icon "$s")

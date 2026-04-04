@@ -45,11 +45,9 @@ main() {
     local repo_name
     repo_name=$(get_repo_name "$repo_path")
 
-    # Resolve parent session: prefer this repo's hub over auto-detected session
-    local parent_session="${repo_name}-hub"
-    if ! session_in_metadata "$parent_session"; then
-        parent_session=$(get_current_session 2>/dev/null || true)
-    fi
+    # Resolve parent session
+    local parent_session
+    parent_session=$(get_current_session 2>/dev/null || true)
 
     # Step 2: Get branch and topic
     if [ "$QUICK_MODE" = true ]; then

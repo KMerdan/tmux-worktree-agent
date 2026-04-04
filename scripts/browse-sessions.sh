@@ -10,7 +10,7 @@
 #   ────────────────────
 #   untracked-repo              ← from $PROJECTS scan
 #
-# Enter: switch to session (or bootstrap hub for untracked project)
+# Enter: switch to session (or create worktree for untracked project)
 # Ctrl-N: create  Ctrl-T: tasks  Ctrl-D: kill  Ctrl-R: refresh
 
 set -e
@@ -67,13 +67,10 @@ build_tree() {
     fi
 
     for repo in "${meta_repos[@]}"; do
-        local hub_name="${repo}-hub"
-
         # Project header with status counts
         local count=0 cp=0 ca=0
         while IFS= read -r session; do
             [ -z "$session" ] && continue
-            [[ "$session" == *-hub ]] && continue
             ((count++)) || true
             local st
             st=$(agent_status_icon "$session")
@@ -92,13 +89,23 @@ build_tree() {
 
         printf " ${BOLD}%s${NC}%b\t\tproject\t%s\n" "$repo" "$suffix" "$repo_path"
 
-        # Top-level sessions (parent empty or hub)
-        while IFS= read -r session; do
-            [ -z "$session" ] && continue
-            [ "$session" = "$hub_name" ] && continue
+        # Top-level sessions (no parent, or parent not in this repo's sessions)
+        local repo_sessions=()
+        while IFS= read -r s; do
+            [ -n "$s" ] && repo_sessions+=("$s")
+        done < <(find_sessions_by_repo "$repo")
+
+        for session in "${repo_sessions[@]}"; do
             local parent
             parent=$(get_session_field "$session" "parent_session")
-            [ -n "$parent" ] && [ "$parent" != "$hub_name" ] && continue
+            # Session is top-level if parent is empty or not a session in this repo
+            local is_child=false
+            if [ -n "$parent" ]; then
+                for rs in "${repo_sessions[@]}"; do
+                    [ "$parent" = "$rs" ] && is_child=true && break
+                done
+            fi
+            $is_child && continue
 
             local status s_icon label description
             status=$(agent_status_icon "$session")
@@ -112,8 +119,7 @@ build_tree() {
             printf "   %b %s%b\t%s\tsession\t%s\n" "$s_icon" "$label" "$desc_part" "$session" "$repo_path"
 
             # Child sessions (subtasks of this session)
-            while IFS= read -r child; do
-                [ -z "$child" ] && continue
+            for child in "${repo_sessions[@]}"; do
                 local child_parent
                 child_parent=$(get_session_field "$child" "parent_session")
                 [ "$child_parent" != "$session" ] && continue
@@ -128,8 +134,8 @@ build_tree() {
                 [ -n "$cd" ] && cdp=" ${DIM}${cd:0:28}${NC}"
 
                 printf "     %b %s%b\t%s\tsubtask\t%s\n" "$ci" "$cl" "$cdp" "$child" "$repo_path"
-            done < <(find_sessions_by_repo "$repo")
-        done < <(find_sessions_by_repo "$repo")
+            done
+        done
     done
 
     # Separator
@@ -217,16 +223,59 @@ main() {
 
             case "$sel_type" in
                 session|subtask)
-                    [ -n "$sel_session" ] && tmux switch-client -t "$sel_session" 2>/dev/null && break
+                    if [ -n "$sel_session" ]; then
+                        if tmux has-session -t "$sel_session" 2>/dev/null; then
+                            tmux switch-client -t "$sel_session" && break
+                        else
+                            # Ghost session — tmux session gone but metadata/worktree remain
+                            local wt_path
+                            wt_path=$(get_session_field "$sel_session" "worktree_path")
+                            if [ -d "$wt_path" ]; then
+                                # Worktree exists — offer to recreate session
+                                local choice
+                                choice=$(printf "Recreate session\nDelete worktree & metadata\nCancel" \
+                                    | fzf --height=6 --layout=reverse \
+                                          --header="Session '$sel_session' is gone. Worktree still exists." \
+                                          --prompt="▸ ") || { continue; }
+                                case "$choice" in
+                                    "Recreate session")
+                                        local branch repo_name agent_cmd
+                                        branch=$(get_session_field "$sel_session" "branch")
+                                        repo_name=$(get_session_field "$sel_session" "repo")
+                                        agent_cmd=$(get_session_field "$sel_session" "agent_cmd")
+                                        tmux new-session -d -s "$sel_session" -c "$wt_path"
+                                        if [ -n "$agent_cmd" ] && command -v "${agent_cmd%% *}" &>/dev/null; then
+                                            tmux send-keys -t "$sel_session" "$agent_cmd" C-m
+                                        fi
+                                        tmux switch-client -t "$sel_session" && break
+                                        ;;
+                                    "Delete worktree & metadata")
+                                        local main_repo
+                                        main_repo=$(get_session_field "$sel_session" "main_repo_path")
+                                        if [ -n "$main_repo" ] && [ -d "$main_repo" ]; then
+                                            (cd "$main_repo" && git worktree remove --force "$wt_path" 2>/dev/null) || rm -rf "$wt_path"
+                                        else
+                                            rm -rf "$wt_path"
+                                        fi
+                                        delete_session "$sel_session"
+                                        continue
+                                        ;;
+                                    *) continue ;;
+                                esac
+                            else
+                                # Both gone — clean up metadata
+                                delete_session "$sel_session"
+                                continue
+                            fi
+                        fi
+                    fi
                     ;;
                 untracked)
                     if [ -n "$sel_session" ] && [ -n "$sel_path" ]; then
-                        local hub="${sel_session}-hub"
-                        if ! session_in_metadata "$hub"; then
-                            save_session "$hub" "$sel_session" "hub" "" "" "$sel_path" false "Dashboard hub" "" "" ""
-                        fi
+                        # Run create-worktree inline (we're already in a popup)
+                        (cd "$sel_path" && bash "$SCRIPT_DIR/create-worktree.sh")
                     fi
-                    continue  # refresh tree to show the new project
+                    break
                     ;;
                 project|separator)
                     continue
