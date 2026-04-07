@@ -457,8 +457,10 @@ create_tmux_session() {
     tmux new-session -d -s "$session_name" -c "$worktree_path"
 
     # Set window name to agent:branch (e.g. claude:wt/bug-fix)
+    local base_idx
+    base_idx=$(tmux show-option -gv base-index 2>/dev/null || echo 0)
     if [ -n "$topic" ]; then
-        rename_window_from_metadata "$session_name:0" "$agent_cmd" "$branch"
+        rename_window_from_metadata "$session_name:${base_idx}" "$agent_cmd" "$branch"
     fi
 
     # Launch agent if requested
@@ -525,6 +527,7 @@ write_agent_config() {
 Read \`${task_filename}.md\` for your task description and acceptance criteria.
 Read \`.shared/context.md\` for project context.
 Read \`.shared/broadcasts/\` for updates from other agents working on parallel tasks.
+If \`.agent-docs/AGENTS.md\` exists, read it for module boundaries and routing, then read the relevant \`.agent-docs/context/*.md\` file for your domain.
 
 ## REQUIRED: Write Broadcast on Completion
 
@@ -640,6 +643,37 @@ Run commands with: \`bash ${wta_path} <command> [args...]\`
   \`.shared/context.md\`, and \`.shared/broadcasts/\`. Do not assume they can run wta commands.
 
 ${end_marker}
+
+<!-- wta:docs-pyramid:start -->
+
+## Documentation Pyramid — Maintain This Structure
+
+Project documentation follows a **progressive disclosure pyramid**. Principle: **exact context at the right time** — agents read only what they need for the task at hand.
+
+\`\`\`
+Layer 1: CLAUDE.md                      (~120 lines, always auto-loaded)
+  What is this project? How to build? Where to look?
+
+Layer 2: .agent-docs/AGENTS.md          (~60 lines, read before writing code)
+  Module boundaries. "Before touching X, read Y" routing table.
+
+Layer 3: .agent-docs/context/*.md       (~60-100 lines each, read ONLY the relevant one)
+  One file per domain: backend, frontend, database, etc.
+
+Layer 4: .agent-docs/{architecture,design,guides}/  (full reference, deep dives only)
+  Detailed designs, worked examples, full API docs.
+\`\`\`
+
+### Maintenance rules
+
+1. **Never dump all context into one file.** If a doc exceeds ~100 lines, it belongs in Layer 3 or 4.
+2. **Layer 1-2 are routing layers** — they point to information, they don't contain it. Keep them thin.
+3. **Layer 3 context files are domain-scoped** — one file per domain. New domain = new file, don't bloat existing ones.
+4. **Layer 4 is reference** — detailed designs, worked examples, full API docs. Read only for deep feature work.
+5. **When updating architecture**, update \`.agent-docs/context/*.md\` first (what agents consume), then Layer 4 if needed.
+6. **When creating task.md**, reference \`.agent-docs/AGENTS.md\` + specific \`.agent-docs/context/*.md\` files in the preamble.
+
+<!-- wta:docs-pyramid:end -->
 WTA_EOF
 
     if [ -f "$claude_md" ]; then

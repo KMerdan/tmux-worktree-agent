@@ -229,7 +229,20 @@ Rules:
     - `.shared/broadcasts/` — each agent writes ONLY `.shared/broadcasts/TASK-<its-id>.md` to communicate changes that affect other tasks
     Include a note in the preamble telling agents about this shared knowledge protocol so they know to check `.shared/broadcasts/` for updates from other tasks and write their own when making cross-task changes.
 
-After writing task.md, you can use the `wta` CLI to spawn and manage sub-agent sessions. Check your CLAUDE.md for the full orchestrator reference — it was just updated with the available commands.
+After writing task.md:
+
+1. **Scaffold `.agent-docs/` if it does not exist.** This is the progressive disclosure documentation pyramid for agents. Create:
+   - `.agent-docs/AGENTS.md` — routing layer (~60 lines): module/crate boundaries table + "before touching X, read Y" table pointing to context files. NO implementation details here — just routing.
+   - `.agent-docs/context/<domain>.md` — one file per distinct domain in the project (~60-100 lines each). Examples: `backend.md`, `frontend.md`, `database.md`, `engine.md`, `pipeline.md`. Each file covers ONE domain with: key types/interfaces, patterns to follow, conventions, gotchas. An agent touching only that domain reads only that file.
+   - `.agent-docs/README.md` — index of all files in the pyramid.
+   - Move any existing deep design docs (architecture, design specs, API references) into `.agent-docs/architecture/`, `.agent-docs/design/`, or `.agent-docs/guides/` as Layer 4 reference docs.
+   If `.agent-docs/` already exists, review and update it to reflect current architecture — do not recreate from scratch.
+
+2. **Update CLAUDE.md** (Layer 1) to include the documentation table pointing to `.agent-docs/` layers. Keep CLAUDE.md under ~120 lines — it should contain project identity, build commands, rules, and a routing table to `.agent-docs/`. Check your CLAUDE.md for the pyramid maintenance rules and follow them.
+
+3. Reference `.agent-docs/AGENTS.md` + the relevant `.agent-docs/context/*.md` file(s) in the task.md preamble so spawned agents know exactly what to read.
+
+4. You can use the `wta` CLI to spawn and manage sub-agent sessions. Check your CLAUDE.md for the full orchestrator reference — it was just updated with the available commands.
 
 Write the file now.'
 
