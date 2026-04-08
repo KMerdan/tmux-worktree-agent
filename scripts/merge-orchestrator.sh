@@ -8,6 +8,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
+source "$PLUGIN_DIR/lib/validate.sh"
 
 # Build the merge prompt dynamically with current state
 build_merge_prompt() {
@@ -107,6 +108,26 @@ $(cat "$f")
         return 1
     fi
 
+    # Run automated validation for each session
+    local validation_results=""
+    if [ -n "$sessions" ]; then
+        while IFS= read -r session; do
+            [ -z "$session" ] && continue
+            local v_result
+            v_result=$(run_validation_pipeline "$session" 2>/dev/null) || true
+            if [ -n "$v_result" ]; then
+                local v_pass
+                v_pass=$(echo "$v_result" | jq -r '.all_pass')
+                local v_checks
+                v_checks=$(echo "$v_result" | jq -r '.checks[] | "  - \(.check): \(if .pass then "PASS" else "FAIL" end)\(if .skipped then " (skipped: \(.skipped))" else "" end)"')
+                validation_results+="
+**${session}**: $([ "$v_pass" = "true" ] && echo "ALL PASS" || echo "HAS FAILURES")
+${v_checks}
+"
+            fi
+        done <<< "$sessions"
+    fi
+
     cat <<PROMPT
 Review the completed task broadcasts and merge their branches into ${base_branch} in the correct dependency order.
 
@@ -120,23 +141,28 @@ Review the completed task broadcasts and merge their branches into ${base_branch
 ${branch_status}
 ### Broadcasts
 ${broadcasts}
+### Automated Validation Results
+
+The following checks were run automatically (scope enforcement, broadcast verification, build, tests, etc.):
+${validation_results}
+**Only merge sessions where all validation checks pass.** If a session has failures, investigate the failing checks before merging.
+
+For detailed results on any session, run: \`wta validate <session>\`
 
 ## Your Job
 
-1. **Read each broadcast** to understand what was changed
+1. **Read the validation results above** — they are the source of truth. The pipeline checks: scope (agent stayed within Scoped Files), broadcast (Files Modified matches actual diff), build/test (if configured), AST rules, and code graph integrity. Trust these results over manual inspection.
 2. **Read the task.md** (in the repo root) to understand dependency order (\`**Depends On**\` / \`**Blocks**\` fields)
-3. **For each completed task** (has a broadcast), in dependency order:
-   a. Check if the worktree has uncommitted changes — if so, review and commit them first
-   b. Fact-check: \`git diff ${base_branch}\` on the worktree branch and verify it matches the broadcast claims
-   c. If correct, merge: \`git merge <branch> --no-edit\` from ${base_branch}
-   d. If incorrect or suspicious, skip it and explain why
-4. **After merging**, kill completed sessions with the plugin's kill script or tmux kill-session
-5. **Report** what was merged, what was skipped, and what's still pending
+3. **For each session where all checks pass**, in dependency order:
+   a. If there are uncommitted changes, review and commit them first
+   b. Merge: \`git merge <branch> --no-edit\` from ${base_branch}
+4. **For sessions with validation failures**: investigate the failing check, fix if possible, or skip and explain why
+5. **After merging**, kill completed sessions with \`wta kill <session>\`
+6. **Report** what was merged, what was skipped, and what's still pending
 
 ## Rules
 - Merge in dependency order: if TASK-B depends on TASK-A, merge A first
-- Do NOT merge tasks that have uncommitted changes without reviewing them first
-- Do NOT merge tasks whose broadcasts don't match the actual diff
+- Do NOT merge sessions with failing validation checks without investigating first
 - If a merge has conflicts, stop and report — do not force resolve
 - Update task.md status to \`[x] done\` for successfully merged tasks
 PROMPT

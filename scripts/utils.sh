@@ -529,6 +529,13 @@ Read \`.shared/context.md\` for project context.
 Read \`.shared/broadcasts/\` for updates from other agents working on parallel tasks.
 If \`.agent-docs/AGENTS.md\` exists, read it for module boundaries and routing, then read the relevant \`.agent-docs/context/*.md\` file for your domain.
 
+## Scope Rules
+
+You MUST NOT modify files outside the **Scoped Files** listed in your task description.
+Out-of-scope changes will be rejected at merge time. If you discover you need to touch a file
+outside your scope, do NOT modify it — instead note it in your broadcast under
+\`## Impact on Other Tasks\` so the orchestrator can coordinate.
+
 ## REQUIRED: Write Broadcast on Completion
 
 When you finish your task, you MUST write \`.shared/broadcasts/${task_id}.md\` before stopping:
@@ -543,8 +550,16 @@ When you finish your task, you MUST write \`.shared/broadcasts/${task_id}.md\` b
 - <how your changes affect other tasks, or "None — fully independent">
 
 ## Files Modified
-- <list of files changed>
+- \`path/to/first-file.ext\`
+- \`path/to/second-file.ext\`
 \`\`\`
+
+**IMPORTANT: The \`## Files Modified\` section must be exact.**
+Each file path MUST be:
+- Wrapped in backticks (e.g., \`src/auth/login.ts\`)
+- One file per line, as a markdown list item
+- The exact relative path from the repo root (matching \`git diff --name-only\` output)
+Inaccurate broadcasts (missing files, phantom files) will be rejected at merge time.
 
 This broadcast is required for the merge orchestrator to review and merge your work.
 Do NOT modify any other file in \`.shared/\`.
@@ -611,6 +626,9 @@ Run commands with: \`bash ${wta_path} <command> [args...]\`
 | \`wta capture <session>\` | Last 40 lines of a session's terminal output |
 | \`wta topology <task.md>\` | Task dependency graph with live completion state |
 | \`wta diff <session>\` | Git diff of session's branch vs its base branch |
+| \`wta validate <session>\` | Run validation pipeline: scope, broadcast, build, test, ast, graph |
+| \`wta validate <session> --check=<name>\` | Run a single check (scope\|broadcast\|build\|test\|ast\|graph) |
+| \`wta merge-check <session>\` | Full merge-readiness report (validation + uncommitted/ahead checks) |
 
 **Mutating** (confirm with the user before running):
 
@@ -627,20 +645,22 @@ Run commands with: \`bash ${wta_path} <command> [args...]\`
 3. **Monitor** — \`wta status\` and \`wta capture <session>\` to watch progress
 4. **Read broadcasts** — \`wta broadcasts <repo>\` to see completed work
 5. **Guide stuck agents** — \`wta send <session> "<instruction>"\` if an agent needs help
-6. **Review & merge** — \`wta diff <session>\` to review, then merge branches in dependency order
-7. **Clean up** — \`wta kill <session>\` for finished/failed sessions
+6. **Validate** — \`wta validate <session>\` to verify scope, broadcast accuracy, build, tests
+7. **Review & merge** — \`wta merge-check <session>\` for merge readiness, then merge passing sessions
+8. **Clean up** — \`wta kill <session>\` for finished/failed sessions
 
 ### Rules
 
 - **Never modify \`.worktree-sessions.json\` directly** — always use \`wta\` commands
 - **Confirm with the user** before running any mutating command (spawn, send, kill)
 - **Merge in dependency order** — if TASK-B depends on TASK-A, merge A first
-- **Check broadcasts before merging** — verify the broadcast matches the actual diff
+- **Validate before merging** — run \`wta validate <session>\` or \`wta merge-check <session>\` before any merge. The validation pipeline automatically checks: scope enforcement (agent stayed within Scoped Files), broadcast accuracy (Files Modified matches git diff), build/test (if configured in \`.wta/validate.conf\`), AST rules, and code graph integrity. Do NOT merge sessions with failing checks.
 - Task agents write their results to \`.shared/broadcasts/TASK-<id>.md\`
 - Task agents read shared context from \`.shared/context.md\` (seeded from task.md preamble)
 - Branch convention: each task gets \`wt/<sanitized-task-id>\`
 - Task agents have NO knowledge of this plugin or \`wta\` — they only know their task file,
   \`.shared/context.md\`, and \`.shared/broadcasts/\`. Do not assume they can run wta commands.
+- **Validation config** — if the project has \`.wta/validate.conf\`, it defines build/test commands and check strictness. Review it when setting up new task batches.
 
 ${end_marker}
 
@@ -712,6 +732,28 @@ setup_shared_dir() {
     ln -sfn ../.shared "$worktree_path/.shared"
 }
 
+# Copy .wta/ validation config from main repo into a worktree
+# Called after worktree creation so build/test commands are available
+setup_validate_config() {
+    local worktree_path="$1"
+    local main_repo_path="$2"
+
+    [ -z "$main_repo_path" ] && return 0
+    [ -d "$main_repo_path/.wta" ] || return 0
+
+    mkdir -p "$worktree_path/.wta"
+
+    # Copy validate.conf
+    if [ -f "$main_repo_path/.wta/validate.conf" ]; then
+        cp "$main_repo_path/.wta/validate.conf" "$worktree_path/.wta/validate.conf"
+    fi
+
+    # Copy ast-grep rules if present
+    if [ -d "$main_repo_path/.wta/ast-grep-rules" ]; then
+        cp -r "$main_repo_path/.wta/ast-grep-rules" "$worktree_path/.wta/"
+    fi
+}
+
 # Create a git worktree for a branch
 # Returns 0 on success, 1 on failure, 2 if worktree already exists and is valid
 create_worktree_for_branch() {
@@ -725,6 +767,7 @@ create_worktree_for_branch() {
         if cd "$worktree_path" && git rev-parse --git-dir >/dev/null 2>&1; then
             log_info "Valid worktree already exists: $worktree_path"
             setup_shared_dir "$worktree_path"
+            setup_validate_config "$worktree_path" "$repo_path"
             return 2
         else
             log_error "Directory exists but is not a git worktree: $worktree_path"
@@ -771,6 +814,7 @@ create_worktree_for_branch() {
 
     log_success "Worktree created"
     setup_shared_dir "$worktree_path"
+    setup_validate_config "$worktree_path" "$repo_path"
     return 0
 }
 

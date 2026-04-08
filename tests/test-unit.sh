@@ -392,6 +392,195 @@ preamble="$(extract_preamble "$TASK_FILE")"
 assert_contains "extract_preamble returns preamble content" "shared context" "$preamble"
 
 # ---------------------------------------------------------------------------
+# Section 7: extract_scoped_files from lib/task-parser.sh
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== extract_scoped_files ==="
+
+SCOPED_TASK_FILE="$TMPDIR_TEST/scoped-tasks.md"
+
+cat > "$SCOPED_TASK_FILE" <<'EOF'
+# Preamble
+
+Shared context.
+
+---
+
+### Task ID: TASK-SCOPE
+**Title**: Test scoped files extraction
+**Status**: `[ ]` pending
+**Priority**: P1
+**Depends On**: None
+**Blocks**: None
+
+**Scoped Files** (ONLY touch these):
+- `src/auth/login.ts` — add OAuth handler
+- `src/auth/session.ts` — update session types
+- `src/tests/` — add tests
+
+**Acceptance Criteria**:
+- [ ] OAuth login works
+EOF
+
+# Find task block start (after the ---)
+scoped_sep_line=$(grep -n '^---[[:space:]]*$' "$SCOPED_TASK_FILE" | head -1 | cut -d: -f1)
+scoped_start=$((scoped_sep_line + 1))
+scoped_total=$(wc -l < "$SCOPED_TASK_FILE" | tr -d ' ')
+
+scoped_out="$(extract_scoped_files "$SCOPED_TASK_FILE" "$scoped_start" "$scoped_total")"
+assert_contains "extract_scoped_files finds login.ts" "src/auth/login.ts" "$scoped_out"
+assert_contains "extract_scoped_files finds session.ts" "src/auth/session.ts" "$scoped_out"
+assert_contains "extract_scoped_files finds tests dir" "src/tests/" "$scoped_out"
+
+scoped_count="$(echo "$scoped_out" | grep -c . || true)"
+assert_eq "extract_scoped_files finds 3 entries" "3" "$scoped_count"
+
+# Test with no scoped files section
+NO_SCOPE_FILE="$TMPDIR_TEST/no-scope.md"
+cat > "$NO_SCOPE_FILE" <<'EOF'
+### Task ID: TASK-NOSCOPE
+**Title**: No scoped files
+**Priority**: P1
+EOF
+
+no_scope_out="$(extract_scoped_files "$NO_SCOPE_FILE" 1 3)"
+assert_empty "extract_scoped_files returns empty when no section" "$no_scope_out"
+
+# ---------------------------------------------------------------------------
+# Section 8: validate.sh — check_scope
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== check_scope ==="
+
+source "$PLUGIN_DIR/lib/validate.sh"
+
+# Create a test git repo with changes
+SCOPE_REPO="$TMPDIR_TEST/scope-repo"
+git init --quiet "$SCOPE_REPO"
+(
+    cd "$SCOPE_REPO"
+    git config user.email "test@test.com"
+    git config user.name "Test"
+    mkdir -p src/auth src/utils
+    echo "original" > src/auth/login.ts
+    echo "original" > src/auth/session.ts
+    echo "original" > src/utils/helpers.ts
+    git add -A
+    git commit --quiet -m "init"
+    git checkout --quiet -b wt/task-scope
+    echo "modified" > src/auth/login.ts
+    echo "modified" > src/utils/helpers.ts
+    git add -A
+    git commit --quiet -m "task changes"
+) 2>/dev/null
+
+# Test scope check — helpers.ts is out of scope
+scope_result="$(check_scope "$SCOPE_REPO" "main" "src/auth/login.ts
+src/auth/session.ts")"
+
+scope_pass="$(echo "$scope_result" | jq -r '.pass')"
+assert_eq "check_scope fails on out-of-scope file" "false" "$scope_pass"
+
+scope_out_of="$(echo "$scope_result" | jq -r '.out_of_scope | length')"
+assert_eq "check_scope detects 1 out-of-scope file" "1" "$scope_out_of"
+
+scope_in="$(echo "$scope_result" | jq -r '.in_scope | length')"
+assert_eq "check_scope detects 1 in-scope file" "1" "$scope_in"
+
+# Test scope check — all files in scope (using directory glob)
+scope_result_pass="$(check_scope "$SCOPE_REPO" "main" "src/auth/
+src/utils/")"
+
+scope_pass2="$(echo "$scope_result_pass" | jq -r '.pass')"
+assert_eq "check_scope passes when all in scope" "true" "$scope_pass2"
+
+# Test scope check — empty scoped files
+scope_result_empty="$(check_scope "$SCOPE_REPO" "main" "")"
+scope_skip="$(echo "$scope_result_empty" | jq -r '.skipped')"
+assert_eq "check_scope skips when no scoped files" "no scoped files defined in task" "$scope_skip"
+
+# ---------------------------------------------------------------------------
+# Section 9: validate.sh — check_broadcast
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== check_broadcast ==="
+
+# Create a broadcast file that matches the diff
+BROADCAST_GOOD="$TMPDIR_TEST/broadcast-good.md"
+cat > "$BROADCAST_GOOD" <<'EOF'
+# TASK-SCOPE — Completed
+
+## Changes Made
+- Modified auth login handler
+- Updated helpers
+
+## Impact on Other Tasks
+- None — fully independent
+
+## Files Modified
+- `src/auth/login.ts`
+- `src/utils/helpers.ts`
+EOF
+
+bcast_result="$(check_broadcast "$SCOPE_REPO" "main" "$BROADCAST_GOOD")"
+bcast_pass="$(echo "$bcast_result" | jq -r '.pass')"
+assert_eq "check_broadcast passes on honest broadcast" "true" "$bcast_pass"
+
+# Create a dishonest broadcast (missing a file, claiming a phantom)
+BROADCAST_BAD="$TMPDIR_TEST/broadcast-bad.md"
+cat > "$BROADCAST_BAD" <<'EOF'
+# TASK-SCOPE — Completed
+
+## Changes Made
+- Modified login handler
+
+## Files Modified
+- `src/auth/login.ts`
+- `src/phantom/does-not-exist.ts`
+EOF
+
+bcast_bad_result="$(check_broadcast "$SCOPE_REPO" "main" "$BROADCAST_BAD")"
+bcast_bad_pass="$(echo "$bcast_bad_result" | jq -r '.pass')"
+assert_eq "check_broadcast fails on dishonest broadcast" "false" "$bcast_bad_pass"
+
+bcast_missing="$(echo "$bcast_bad_result" | jq -r '.missing_from_broadcast | length')"
+assert_eq "check_broadcast detects 1 missing file" "1" "$bcast_missing"
+
+bcast_phantom="$(echo "$bcast_bad_result" | jq -r '.phantom_in_broadcast | length')"
+assert_eq "check_broadcast detects 1 phantom file" "1" "$bcast_phantom"
+
+# Test with no broadcast file
+bcast_no_file="$(check_broadcast "$SCOPE_REPO" "main" "")"
+bcast_no_pass="$(echo "$bcast_no_file" | jq -r '.pass')"
+assert_eq "check_broadcast fails when no broadcast file" "false" "$bcast_no_pass"
+
+# ---------------------------------------------------------------------------
+# Section 10: validate.sh — extract_broadcast_files
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== extract_broadcast_files ==="
+
+bcast_files="$(extract_broadcast_files "$BROADCAST_GOOD")"
+assert_contains "extract_broadcast_files finds login.ts" "src/auth/login.ts" "$bcast_files"
+assert_contains "extract_broadcast_files finds helpers.ts" "src/utils/helpers.ts" "$bcast_files"
+
+bfiles_count="$(echo "$bcast_files" | grep -c . || true)"
+assert_eq "extract_broadcast_files finds 2 files" "2" "$bfiles_count"
+
+# Test broadcast with bare paths (no backticks)
+BROADCAST_BARE="$TMPDIR_TEST/broadcast-bare.md"
+cat > "$BROADCAST_BARE" <<'EOF'
+# TASK — Completed
+
+## Files Modified
+- src/file1.ts
+- src/file2.ts
+EOF
+
+bare_files="$(extract_broadcast_files "$BROADCAST_BARE")"
+assert_contains "extract_broadcast_files handles bare paths" "src/file1.ts" "$bare_files"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

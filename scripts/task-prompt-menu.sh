@@ -9,6 +9,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
+source "$PLUGIN_DIR/lib/validate.sh"
 
 trap 'rc=$?; if [ $rc -ne 0 ]; then sleep 1.5; fi; exit $rc' EXIT
 
@@ -107,7 +108,8 @@ ${branch_context}
 2. Check \`.shared/broadcasts/\` for updates from other agents working on parallel tasks
 3. Fact-check every assumption against the actual codebase — read the relevant files, trace the code paths, verify interfaces and types exist as described
 4. Only after you have confirmed your understanding matches reality, begin implementing
-5. When finished, commit all changes and write your broadcast to \`.shared/broadcasts/TASK-<your-id>.md\` — do NOT merge into any branch"
+5. Stay within your **Scoped Files** — do NOT modify files outside your listed scope. Out-of-scope changes will be rejected at merge time. If you need a file outside scope, note it in your broadcast under \`## Impact on Other Tasks\`.
+6. When finished, commit all changes and write your broadcast to \`.shared/broadcasts/TASK-<your-id>.md\` — do NOT merge into any branch. Your \`## Files Modified\` section must list every file you changed, exactly matching the actual paths. Inaccurate broadcasts will be rejected."
 
     send_prompt_to_agent "$text" "Start task prompt sent to agent"
 }
@@ -219,7 +221,7 @@ Rules:
 3. Tasks MUST be separated by `---` (horizontal rule on its own line)
 4. The preamble (before first `---`) is shared context ��� make it rich and complete
 5. Task IDs: short, descriptive kebab-case (e.g., TASK-auth, TASK-ocr, TASK-api-routes). Each task will be spawned on a `wt/<sanitized-task-id>` branch in its own worktree
-6. **Scoped Files** is critical: each task MUST list exactly which files it will touch. Two tasks MUST NOT have overlapping scoped files — this prevents merge conflicts across worktrees
+6. **Scoped Files** is critical and **automatically enforced**: each task MUST list exactly which files it will touch. Two tasks MUST NOT have overlapping scoped files. The validation pipeline (`wta validate`) checks every agent'\''s actual `git diff` against their Scoped Files list — out-of-scope changes block the merge. Use exact paths or directory prefixes (e.g., `src/auth/` matches all files under that directory).
 7. **Shared Interfaces**: when tasks need to coordinate (e.g., one creates a type another imports), define the contract explicitly so both agents agree on the shape
 8. **Out of Scope**: explicitly prevent agents from drifting into other tasks'\'' territory
 9. Set **Depends On** / **Blocks** when task ordering matters
@@ -227,7 +229,10 @@ Rules:
 11. Each spawned agent gets a `.shared/` directory (symlinked across all worktrees for the same repo) with:
     - `.shared/context.md` — seeded from the preamble, read-only for agents
     - `.shared/broadcasts/` — each agent writes ONLY `.shared/broadcasts/TASK-<its-id>.md` to communicate changes that affect other tasks
-    Include a note in the preamble telling agents about this shared knowledge protocol so they know to check `.shared/broadcasts/` for updates from other tasks and write their own when making cross-task changes.
+    Include a note in the preamble telling agents:
+    - Check `.shared/broadcasts/` for updates from parallel tasks before starting work
+    - Stay strictly within your **Scoped Files** — out-of-scope changes will be rejected
+    - Your broadcast `## Files Modified` must exactly match your actual changes — inaccurate broadcasts will be rejected
 
 After writing task.md:
 
@@ -242,7 +247,15 @@ After writing task.md:
 
 3. Reference `.agent-docs/AGENTS.md` + the relevant `.agent-docs/context/*.md` file(s) in the task.md preamble so spawned agents know exactly what to read.
 
-4. You can use the `wta` CLI to spawn and manage sub-agent sessions. Check your CLAUDE.md for the full orchestrator reference — it was just updated with the available commands.
+4. **Configure validation** (recommended): Create `.wta/validate.conf` in the repo root with build and test commands for the project:
+   ```
+   WTA_BUILD_CMD="<your build command, e.g. cargo check, npm run build>"
+   WTA_TEST_CMD="<your test command, e.g. cargo test, npm test>"
+   WTA_CHECKS="scope,broadcast,build,test"
+   ```
+   This config is automatically copied into each worktree at spawn time. The validation pipeline (`wta validate`) uses it to verify agent work before merging. At minimum, scope and broadcast checks run automatically (they need only git).
+
+5. You can use the `wta` CLI to spawn and manage sub-agent sessions. Check your CLAUDE.md for the full orchestrator reference — it was just updated with the available commands.
 
 Write the file now.'
 
@@ -290,8 +303,12 @@ ${changed_files}
 3. If a constraint is stale (the file has been actively modified), either:
    - Remove the constraint if the file is now stable and open for changes
    - Update the constraint to reflect the current state (e.g., \"Do NOT modify X except for Y\")
-4. Check if any task's \`**Scoped Files**\` conflicts with the shared constraints — flag these
-5. Also update the \`## Cross-Task Dependencies\` section:
+4. Check if any task's \`**Scoped Files**\` conflicts with the shared constraints — flag these. Note: Scoped Files are now **automatically enforced** by the validation pipeline, so they must be accurate.
+5. Review \`.wta/validate.conf\` if it exists:
+   - Are the build/test commands (\`WTA_BUILD_CMD\`, \`WTA_TEST_CMD\`) still correct?
+   - Should any checks be added or removed from \`WTA_CHECKS\`?
+   - If the file doesn't exist and the project has a build/test system, consider creating it.
+6. Also update the \`## Cross-Task Dependencies\` section:
    - Mark completed tasks (check \`**Status**: [x] done\`)
    - Update dependency notes for remaining tasks
 
@@ -372,6 +389,98 @@ At the end, identify the ABSOLUTE ESSENTIAL set — the files without which the 
 Present your findings as a ranked table, then give me your top 3 recommended deletions with the exact files and line savings."
 
     send_prompt_to_agent "$text" "Simplify project prompt sent to agent"
+}
+
+# ---------------------------------------------------------------------------
+# Action: Validate a session (interactive — pick session, run pipeline, show results)
+# ---------------------------------------------------------------------------
+action_validate_session() {
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
+
+    local repo_path
+    repo_path=$(cd "$pane_cwd" && git rev-parse --show-toplevel 2>/dev/null)
+    if [ -z "$repo_path" ]; then
+        log_error "Not in a git repository"
+        sleep 1.5
+        return 1
+    fi
+
+    local repo_name
+    repo_name=$(get_repo_name "$repo_path")
+
+    # Build list of sessions for this repo
+    local sessions
+    sessions=$(find_sessions_by_repo "$repo_name")
+    if [ -z "$sessions" ]; then
+        log_warn "No sessions for repo '$repo_name'"
+        sleep 1.5
+        return 1
+    fi
+
+    # Let user pick a session
+    local selected
+    selected=$(echo "$sessions" | fzf \
+        --ansi \
+        --header="Select session to validate | Enter: validate | Esc: cancel" \
+        --layout=reverse \
+        --height=100% \
+        --no-preview \
+        --bind='esc:cancel')
+
+    if [ -z "$selected" ]; then
+        return 0
+    fi
+
+    echo ""
+    log_info "Validating: $selected"
+    echo ""
+
+    # Run validation pipeline
+    local result
+    result=$(run_validation_pipeline "$selected" 2>&1)
+    local rc=$?
+
+    if [ -z "$result" ]; then
+        log_error "Validation failed to run"
+        sleep 2
+        return 1
+    fi
+
+    # Pretty-print results
+    local all_pass
+    all_pass=$(echo "$result" | jq -r '.all_pass' 2>/dev/null)
+
+    if [ "$all_pass" = "true" ]; then
+        echo -e "\033[0;32m═══ ALL CHECKS PASS ═══\033[0m"
+    else
+        echo -e "\033[0;31m═══ VALIDATION FAILURES ═══\033[0m"
+    fi
+    echo ""
+
+    echo "$result" | jq -r '.checks[] | "\(.check): \(if .pass then "✓ PASS" else "✗ FAIL" end)\(if .skipped then " (skipped: \(.skipped))" else "" end)"' 2>/dev/null
+
+    # Show details for failures
+    echo ""
+    echo "$result" | jq -r '
+        .checks[] | select(.pass == false and .skipped == null) |
+        if .check == "scope" then
+            "Out of scope files:\n" + (.out_of_scope // [] | map("  - " + .) | join("\n"))
+        elif .check == "broadcast" then
+            "Missing from broadcast:\n" + (.missing_from_broadcast // [] | map("  - " + .) | join("\n")) +
+            "\nPhantom in broadcast:\n" + (.phantom_in_broadcast // [] | map("  - " + .) | join("\n"))
+        elif .check == "build" then
+            "Build failed (exit \(.exit_code)):\n" + (.output_tail // "")
+        elif .check == "test" then
+            "Tests failed (exit \(.exit_code)):\n" + (.output_tail // "")
+        elif .check == "ast" then
+            "AST findings:\n" + (.findings // [] | map("  - \(.file):\(.line) \(.rule): \(.message)") | join("\n"))
+        else empty
+        end
+    ' 2>/dev/null
+
+    echo ""
+    read -n 1 -s -r -p "Press any key to close..." < /dev/tty
 }
 
 # ---------------------------------------------------------------------------
@@ -599,6 +708,7 @@ main() {
     menu+="Start sub-agent task
 Generate task.md
 Merge completed tasks
+Validate session
 Update constraints
 Simplify project
 ──────────────────────────
@@ -630,6 +740,9 @@ Manage custom prompts"
             ;;
         "Merge completed tasks")
             exec "$SCRIPT_DIR/merge-orchestrator.sh"
+            ;;
+        "Validate session")
+            action_validate_session
             ;;
         "Update constraints")
             prompt_update_constraints

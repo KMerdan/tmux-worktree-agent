@@ -56,6 +56,23 @@ case "$selection" in
         echo "${DIM}Uses parent_branch from metadata (not hardcoded main).${NC}"
         echo "${DIM}Stops on merge conflicts — does not force resolve.${NC}"
         ;;
+    "Validate session")
+        echo "${BOLD}Validate Session${NC}"
+        echo ""
+        echo "Run the automated validation pipeline on a session."
+        echo "Checks run in sequence:"
+        echo ""
+        echo "  1. ${CYAN}Scope${NC} — did the agent stay within scoped files?"
+        echo "  2. ${CYAN}Broadcast${NC} — does the broadcast match the actual diff?"
+        echo "  3. ${CYAN}Build${NC} — does the code compile? (if configured)"
+        echo "  4. ${CYAN}Test${NC} — do tests pass? (if configured)"
+        echo "  5. ${CYAN}AST${NC} — ast-grep structural analysis (if installed)"
+        echo "  6. ${CYAN}Graph${NC} — circular dependency check (if tool available)"
+        echo ""
+        echo "${DIM}Configure checks per-project in .wta/validate.conf${NC}"
+        echo "${DIM}Scope + broadcast checks require only git (always available).${NC}"
+        echo "${DIM}CLI equivalent: wta validate <session>${NC}"
+        ;;
     "Update constraints")
         echo "${BOLD}Update Constraints${NC}"
         echo ""

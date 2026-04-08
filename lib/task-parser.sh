@@ -217,6 +217,29 @@ extract_task_block() {
     sed -n "${start_line},${end_line}p" "$filepath"
 }
 
+# Extract scoped file paths from a task block
+# Parses the **Scoped Files** section, extracts backtick-quoted paths
+# Input: task file path, start_line, end_line
+# Output: newline-separated file paths (stripped of backticks and descriptions)
+extract_scoped_files() {
+    local filepath="$1"
+    local start_line="$2"
+    local end_line="$3"
+
+    sed -n "${start_line},${end_line}p" "$filepath" | awk '
+        /^\*\*Scoped Files\*\*/ { capture=1; next }
+        /^\*\*[A-Z]/ { if (capture) exit }
+        capture && /`[^`]+`/ {
+            line = $0
+            match(line, /`[^`]+`/)
+            if (RSTART > 0) {
+                path = substr(line, RSTART+1, RLENGTH-2)
+                print path
+            }
+        }
+    '
+}
+
 # Extract the preamble (everything before the first --- separator)
 # This is shared context that should be included with every task
 extract_preamble() {

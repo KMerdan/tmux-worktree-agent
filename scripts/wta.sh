@@ -27,6 +27,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
 source "$PLUGIN_DIR/lib/task-parser.sh"
+source "$PLUGIN_DIR/lib/validate.sh"
 source "$SCRIPT_DIR/status-agents.sh"
 
 # ── status [repo] ─────────────────────────────────────────────────────
@@ -417,6 +418,127 @@ cmd_kill() {
     echo "Done: $session_name removed."
 }
 
+# ── validate <session> [--check=<name>] ──────────────────────────────
+
+cmd_validate() {
+    local session_name=""
+    local single_check=""
+
+    # Parse args
+    for arg in "$@"; do
+        case "$arg" in
+            --check=*)
+                single_check="${arg#--check=}"
+                ;;
+            *)
+                session_name="$arg"
+                ;;
+        esac
+    done
+
+    if [ -z "$session_name" ]; then
+        echo "Usage: wta validate <session> [--check=scope|broadcast|build|test|ast|graph]"
+        return 1
+    fi
+
+    local result
+    result=$(run_validation_pipeline "$session_name" "$single_check")
+    local rc=$?
+
+    if [ $rc -ne 0 ]; then
+        return 1
+    fi
+
+    echo "$result"
+
+    # Exit non-zero if any check failed
+    local all_pass
+    all_pass=$(echo "$result" | jq -r '.all_pass')
+    if [ "$all_pass" = "false" ]; then
+        return 1
+    fi
+}
+
+# ── merge-check <session> ────────────────────────────────────────────
+
+cmd_merge_check() {
+    local session_name="${1:?Usage: wta merge-check <session>}"
+
+    if ! session_in_metadata "$session_name"; then
+        echo "Session '$session_name' not found in metadata."
+        return 1
+    fi
+
+    local worktree_path parent_branch branch
+    worktree_path=$(get_session_field "$session_name" "worktree_path")
+    parent_branch=$(get_session_field "$session_name" "parent_branch")
+    branch=$(get_session_field "$session_name" "branch")
+    local main_repo_path
+    main_repo_path=$(get_session_field "$session_name" "main_repo_path")
+
+    if [ -z "$parent_branch" ]; then
+        parent_branch=$(get_default_branch "$main_repo_path")
+    fi
+
+    # Pre-merge checks: uncommitted changes, commits ahead
+    local has_uncommitted=false
+    if [ -d "$worktree_path" ]; then
+        if [ -n "$(cd "$worktree_path" && git status --porcelain 2>/dev/null)" ]; then
+            has_uncommitted=true
+        fi
+    fi
+
+    local commits_ahead=0
+    if [ -n "$branch" ] && [ -d "$main_repo_path" ]; then
+        commits_ahead=$(cd "$main_repo_path" && git log --oneline "${parent_branch}..${branch}" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+
+    local already_merged=false
+    if [ -n "$branch" ] && [ -d "$main_repo_path" ]; then
+        if cd "$main_repo_path" && git branch --merged "$parent_branch" 2>/dev/null | sed 's/^[*+ ] //' | grep -qx "$branch"; then
+            already_merged=true
+        fi
+    fi
+
+    # Run validation pipeline
+    local validation
+    validation=$(run_validation_pipeline "$session_name" 2>/dev/null) || validation='{}'
+
+    local all_pass
+    all_pass=$(echo "$validation" | jq -r '.all_pass // false')
+
+    # Merge readiness
+    local merge_ready=true
+    [ "$has_uncommitted" = true ] && merge_ready=false
+    [ "$commits_ahead" -eq 0 ] && merge_ready=false
+    [ "$already_merged" = true ] && merge_ready=false
+    [ "$all_pass" = "false" ] && merge_ready=false
+
+    jq -n \
+        --arg session "$session_name" \
+        --arg branch "$branch" \
+        --arg parent_branch "$parent_branch" \
+        --argjson has_uncommitted "$has_uncommitted" \
+        --argjson commits_ahead "$commits_ahead" \
+        --argjson already_merged "$already_merged" \
+        --argjson merge_ready "$merge_ready" \
+        --argjson validation "$validation" \
+        '{
+            session: $session,
+            branch: $branch,
+            parent_branch: $parent_branch,
+            has_uncommitted: $has_uncommitted,
+            commits_ahead: $commits_ahead,
+            already_merged: $already_merged,
+            merge_ready: $merge_ready,
+            validation: $validation
+        }'
+
+    if [ "$merge_ready" = false ]; then
+        return 1
+    fi
+}
+
 # ── Dispatch ──────────────────────────────────────────────────────────
 
 usage() {
@@ -429,6 +551,9 @@ Read-only:
   capture <session>          Terminal output of a session (last 40 lines)
   topology <task.md>         Task dependency graph with completion state
   diff <session>             Git diff vs base branch
+  validate <session>         Run validation pipeline (scope, broadcast, build, test, ast, graph)
+  validate <session> --check=<name>  Run single check
+  merge-check <session>      Validate + merge-readiness report
 
 Mutating:
   spawn <task.md> <task-id>  Create worktree + session + start agent
@@ -441,14 +566,16 @@ command="${1:-}"
 shift 2>/dev/null || true
 
 case "$command" in
-    status)     cmd_status "$@" ;;
-    broadcasts) cmd_broadcasts "$@" ;;
-    capture)    cmd_capture "$@" ;;
-    topology)   cmd_topology "$@" ;;
-    diff)       cmd_diff "$@" ;;
-    spawn)      cmd_spawn "$@" ;;
-    send)       cmd_send "$@" ;;
-    kill)       cmd_kill "$@" ;;
+    status)      cmd_status "$@" ;;
+    broadcasts)  cmd_broadcasts "$@" ;;
+    capture)     cmd_capture "$@" ;;
+    topology)    cmd_topology "$@" ;;
+    diff)        cmd_diff "$@" ;;
+    validate)    cmd_validate "$@" ;;
+    merge-check) cmd_merge_check "$@" ;;
+    spawn)       cmd_spawn "$@" ;;
+    send)        cmd_send "$@" ;;
+    kill)        cmd_kill "$@" ;;
     help|--help|-h|"")
         usage
         ;;

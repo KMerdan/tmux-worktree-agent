@@ -12,6 +12,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
+source "$PLUGIN_DIR/lib/validate.sh"
 source "$SCRIPT_DIR/status-agents.sh"
 
 DIM='\033[2m'
@@ -123,6 +124,28 @@ render_session() {
     elif [ -n "$description" ]; then
         echo -e "${DIM}─────────────────────────────────${NC}"
         echo -e "${DIM}${description}${NC}"
+    fi
+
+    # ── Quick validation summary (scope check only — fast) ──
+    if [ -n "$worktree_path" ] && [ -d "$worktree_path" ] && [ -n "$branch" ]; then
+        local scoped_files parent_br
+        parent_br=$(get_session_field "$SESSION" "parent_branch")
+        scoped_files=$(_resolve_scoped_files "$worktree_path" 2>/dev/null)
+
+        if [ -n "$scoped_files" ]; then
+            local scope_result scope_pass oos_count
+            scope_result=$(check_scope "$worktree_path" "${parent_br:-main}" "$scoped_files" 2>/dev/null) || true
+            if [ -n "$scope_result" ]; then
+                scope_pass=$(echo "$scope_result" | jq -r '.pass' 2>/dev/null)
+                oos_count=$(echo "$scope_result" | jq -r '.out_of_scope | length' 2>/dev/null)
+                echo -e "${DIM}─────────────────────────────────${NC}"
+                if [ "$scope_pass" = "true" ]; then
+                    echo -e "${GREEN}Scope: OK${NC}"
+                else
+                    echo -e "${RED}Scope: ${oos_count} file(s) out of scope${NC}"
+                fi
+            fi
+        fi
     fi
 
     # ── Terminal output (always) ──
