@@ -604,6 +604,219 @@ assert_contains "scenario10: TASK-API scoped has api dir" "src/api/" "$api_scope
 echo ""
 
 # ---------------------------------------------------------------------------
+# Scenario 11: Scaffolding filter retains tracked project files
+# ---------------------------------------------------------------------------
+# Regression test for a bug where _filter_scaffolding stripped CLAUDE.md /
+# AGENTS.md / wt-*.md / .shared/* / .wta/* by name alone, silently hiding
+# modifications to project files whose names happened to collide with
+# scaffolding patterns (e.g. this very plugin has a tracked CLAUDE.md).
+# The fix: tracked files in parent_branch must always be visible to
+# check_scope and check_broadcast.
+echo "=== Scenario 11: Scaffolding filter retains tracked project files ==="
+
+SCAFF_REPO="$TMPDIR_TEST/scaff-repo"
+SCAFF_WORKTREES="$TMPDIR_TEST/scaff-worktrees/scaff-project"
+mkdir -p "$SCAFF_WORKTREES"
+
+git init --quiet "$SCAFF_REPO"
+(
+    cd "$SCAFF_REPO"
+    git config user.email "wta-test@local"
+    git config user.name "wta-test"
+    # Tracked CLAUDE.md at the project root — a real project file, not scaffolding
+    echo "# Test Project" > CLAUDE.md
+    git add CLAUDE.md
+    git commit --quiet -m "initial: add project CLAUDE.md"
+) 2>/dev/null
+
+WT11="$SCAFF_WORKTREES/scaffolding-test"
+(cd "$SCAFF_REPO" && git worktree add "$WT11" -b wt/scaffolding-test) >/dev/null 2>&1
+
+# Set up .shared broadcasts directory for this project (sibling of worktree)
+mkdir -p "$SCAFF_WORKTREES/.shared/broadcasts"
+ln -sfn ../.shared "$WT11/.shared"
+
+# Agent modifies the tracked CLAUDE.md AND adds a new source file
+(
+    cd "$WT11"
+    mkdir -p src
+    echo "" >> CLAUDE.md
+    echo "## Updated by agent" >> CLAUDE.md
+    echo 'export const feature = true;' > src/feature.ts
+    git add -A
+    git commit --quiet -m "update docs and add feature"
+) 2>/dev/null
+
+# Task file scoping both files (the key scenario: CLAUDE.md is legit in-scope)
+cat > "$WT11/wt-scaffolding-test.md" <<'EOF'
+# Scaffolding Test
+
+---
+
+### Task ID: TASK-scaffolding-test
+**Title**: Update project docs and add feature
+**Scoped Files** (ONLY touch these):
+- `CLAUDE.md` — document new feature
+- `src/feature.ts` — new feature implementation
+EOF
+
+# Broadcast claims both files. Filename must be discoverable by
+# _find_broadcast_file, which matches basename against the session topic
+# (lowercase, whitespace-stripped).
+cat > "$SCAFF_WORKTREES/.shared/broadcasts/scaffolding-test.md" <<'EOF'
+# TASK-scaffolding-test — Completed
+
+## Changes Made
+- Updated project CLAUDE.md with new section
+- Added src/feature.ts
+
+## Files Modified
+- `CLAUDE.md`
+- `src/feature.ts`
+EOF
+
+save_session "scaff-project-scaffolding-test" "scaff-project" "scaffolding-test" \
+    "wt/scaffolding-test" "$WT11" "$SCAFF_REPO" "false" "Scaffolding filter test" \
+    "claude" "main" ""
+
+result11=$(run_validation_pipeline "scaff-project-scaffolding-test")
+
+assert_json_field "scenario11: all_pass is true" "$result11" '.all_pass' "true"
+assert_json_field "scenario11: scope passes" "$result11" \
+    '.checks[] | select(.check=="scope") | .pass' "true"
+assert_json_field "scenario11: broadcast passes" "$result11" \
+    '.checks[] | select(.check=="broadcast") | .pass' "true"
+
+# The critical assertions: tracked CLAUDE.md must be visible to both checks.
+# Before the fix, _filter_scaffolding would strip it by name alone and both
+# arrays would be missing it (scope would show untouched_scope for CLAUDE.md
+# and broadcast would report it as a phantom claim).
+scope_in_scope11=$(echo "$result11" | jq -r '.checks[] | select(.check=="scope") | .in_scope[]')
+assert_contains "scenario11: scope.in_scope contains tracked CLAUDE.md" \
+    "CLAUDE.md" "$scope_in_scope11"
+assert_contains "scenario11: scope.in_scope contains src/feature.ts" \
+    "src/feature.ts" "$scope_in_scope11"
+
+bcast_actual11=$(echo "$result11" | jq -r '.checks[] | select(.check=="broadcast") | .actual[]')
+assert_contains "scenario11: broadcast.actual contains tracked CLAUDE.md" \
+    "CLAUDE.md" "$bcast_actual11"
+assert_contains "scenario11: broadcast.actual contains src/feature.ts" \
+    "src/feature.ts" "$bcast_actual11"
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# Scenario 12: Three-dot diff stability under parent advance
+# ---------------------------------------------------------------------------
+# Regression test: a session branched from main at commit X should not be
+# polluted when main later advances with unrelated commits. The validation
+# pipeline relies on `git diff parent_branch...HEAD` (three-dot) which diffs
+# from the merge base; a two-dot diff would leak the parent's new commits
+# into both in_scope / out_of_scope and broadcast.actual.
+echo "=== Scenario 12: Three-dot diff stability under parent advance ==="
+
+ADV_REPO="$TMPDIR_TEST/advance-repo"
+ADV_WORKTREES="$TMPDIR_TEST/advance-worktrees/advance-project"
+mkdir -p "$ADV_WORKTREES"
+
+git init --quiet "$ADV_REPO"
+(
+    cd "$ADV_REPO"
+    git config user.email "wta-test@local"
+    git config user.name "wta-test"
+    echo 'export const base = 1;' > base.ts
+    git add base.ts
+    git commit --quiet -m "initial"
+) 2>/dev/null
+
+WT12="$ADV_WORKTREES/parent-advance"
+(cd "$ADV_REPO" && git worktree add "$WT12" -b wt/parent-advance) >/dev/null 2>&1
+
+mkdir -p "$ADV_WORKTREES/.shared/broadcasts"
+ln -sfn ../.shared "$WT12/.shared"
+
+# Session commits its own file
+(
+    cd "$WT12"
+    echo 'export const sessionWork = true;' > session-work.ts
+    git add session-work.ts
+    git commit --quiet -m "session work"
+) 2>/dev/null
+
+# Now advance main with an unrelated commit — main is ahead of the session's
+# branch point, but the session branch itself is unchanged.
+(
+    cd "$ADV_REPO"
+    echo 'export const parentAdvance = true;' > parent-advance.ts
+    git add parent-advance.ts
+    git commit --quiet -m "unrelated parent advance"
+) 2>/dev/null
+
+cat > "$WT12/wt-parent-advance.md" <<'EOF'
+# Parent Advance Test
+
+---
+
+### Task ID: TASK-parent-advance
+**Title**: Session work
+**Scoped Files** (ONLY touch these):
+- `session-work.ts` — new session file
+EOF
+
+cat > "$ADV_WORKTREES/.shared/broadcasts/parent-advance.md" <<'EOF'
+# TASK-parent-advance — Completed
+
+## Changes Made
+- Added session-work.ts
+
+## Files Modified
+- `session-work.ts`
+EOF
+
+save_session "advance-project-parent-advance" "advance-project" "parent-advance" \
+    "wt/parent-advance" "$WT12" "$ADV_REPO" "false" "Parent advance test" \
+    "claude" "main" ""
+
+result12=$(run_validation_pipeline "advance-project-parent-advance")
+
+assert_json_field "scenario12: all_pass is true" "$result12" '.all_pass' "true"
+assert_json_field "scenario12: scope passes" "$result12" \
+    '.checks[] | select(.check=="scope") | .pass' "true"
+assert_json_field "scenario12: broadcast passes" "$result12" \
+    '.checks[] | select(.check=="broadcast") | .pass' "true"
+
+# in_scope must contain session-work.ts and NOT contain parent-advance.ts
+scope_in_scope12=$(echo "$result12" | jq -r '.checks[] | select(.check=="scope") | .in_scope[]')
+assert_contains "scenario12: scope.in_scope contains session-work.ts" \
+    "session-work.ts" "$scope_in_scope12"
+if echo "$scope_in_scope12" | grep -qFx "parent-advance.ts"; then
+    fail "scenario12: scope.in_scope must NOT contain parent-advance.ts (parent leak)"
+else
+    pass "scenario12: scope.in_scope excludes parent-advance.ts"
+fi
+
+# The parent advance file must not surface as out_of_scope either — it belongs
+# to the parent branch, not to the session's diff.
+scope_oos12=$(echo "$result12" | jq -r '.checks[] | select(.check=="scope") | .out_of_scope[]')
+if echo "$scope_oos12" | grep -qFx "parent-advance.ts"; then
+    fail "scenario12: scope.out_of_scope must NOT contain parent-advance.ts (parent leak)"
+else
+    pass "scenario12: scope.out_of_scope excludes parent-advance.ts"
+fi
+
+# broadcast.actual must be session-work.ts only
+bcast_actual12=$(echo "$result12" | jq -r '.checks[] | select(.check=="broadcast") | .actual[]')
+assert_contains "scenario12: broadcast.actual contains session-work.ts" \
+    "session-work.ts" "$bcast_actual12"
+if echo "$bcast_actual12" | grep -qFx "parent-advance.ts"; then
+    fail "scenario12: broadcast.actual must NOT contain parent-advance.ts (parent leak)"
+else
+    pass "scenario12: broadcast.actual excludes parent-advance.ts"
+fi
+
+echo ""
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

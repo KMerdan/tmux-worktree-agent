@@ -581,6 +581,68 @@ bare_files="$(extract_broadcast_files "$BROADCAST_BARE")"
 assert_contains "extract_broadcast_files handles bare paths" "src/file1.ts" "$bare_files"
 
 # ---------------------------------------------------------------------------
+# Section 11: init_metadata — corruption recovery
+# ---------------------------------------------------------------------------
+# Regression test for a bug where init_metadata had no recovery path: a
+# partial write or an external editor could leave .worktree-sessions.json
+# invalid and every jq call in the plugin would start failing. The fix:
+# detect invalid JSON, quarantine the bad file as .corrupted.<epoch>, and
+# write a fresh {}.
+echo ""
+echo "=== init_metadata corruption recovery ==="
+
+# Save the test harness's own METADATA_FILE so the later sections that rely
+# on it aren't disturbed.
+_SAVED_METADATA_FILE="$METADATA_FILE"
+
+INIT_TMP="$TMPDIR_TEST/init-recovery"
+mkdir -p "$INIT_TMP"
+
+# Case 1: file does not exist — init_metadata should create it as {}
+METADATA_FILE="$INIT_TMP/nonexistent.json"
+init_metadata
+if [ -f "$METADATA_FILE" ]; then
+    pass "init_metadata creates file when missing"
+else
+    fail "init_metadata did not create missing file"
+fi
+assert_eq "init_metadata missing -> {}" "{}" "$(cat "$METADATA_FILE")"
+case1_quarantines=$(ls "$INIT_TMP"/nonexistent.json.corrupted.* 2>/dev/null || true)
+assert_empty "init_metadata missing -> no quarantine sibling" "$case1_quarantines"
+
+# Case 2: file exists with valid JSON — must be left unchanged
+METADATA_FILE="$INIT_TMP/valid.json"
+echo '{"test-session": {"repo": "test"}}' > "$METADATA_FILE"
+_valid_before=$(cat "$METADATA_FILE")
+init_metadata
+_valid_after=$(cat "$METADATA_FILE")
+assert_eq "init_metadata valid JSON left unchanged" "$_valid_before" "$_valid_after"
+assert_contains "init_metadata valid JSON preserves entry" "test-session" "$_valid_after"
+case2_quarantines=$(ls "$INIT_TMP"/valid.json.corrupted.* 2>/dev/null || true)
+assert_empty "init_metadata valid JSON -> no quarantine sibling" "$case2_quarantines"
+
+# Case 3: file exists with INVALID JSON — the main regression case.
+# init_metadata must quarantine the bad file and write a fresh {}.
+METADATA_FILE="$INIT_TMP/corrupt.json"
+echo 'not valid json {' > "$METADATA_FILE"
+init_metadata
+assert_eq "init_metadata corrupt JSON -> fresh {}" "{}" "$(cat "$METADATA_FILE")"
+
+# Exactly one quarantine sibling should exist.
+case3_quarantines=$(ls "$INIT_TMP"/corrupt.json.corrupted.* 2>/dev/null || true)
+assert_nonempty "init_metadata corrupt JSON -> quarantine sibling exists" "$case3_quarantines"
+case3_count=$(echo "$case3_quarantines" | grep -c . || true)
+assert_eq "init_metadata corrupt JSON -> exactly 1 quarantine sibling" "1" "$case3_count"
+
+# The quarantine must preserve the original garbage for manual recovery.
+assert_contains "init_metadata quarantine preserves original bytes" \
+    "not valid json" "$(cat "$case3_quarantines")"
+
+# Restore harness metadata file so later harness teardown doesn't drift.
+METADATA_FILE="$_SAVED_METADATA_FILE"
+export METADATA_FILE
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
