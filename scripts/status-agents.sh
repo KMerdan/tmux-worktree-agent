@@ -50,12 +50,16 @@ _classify_pane_state() {
         return 0  # waiting
     fi
 
-    # Claude: detect by permanent UI frame (❯ prompt + model name in status)
-    # Instead of matching volatile UI text, use pane activity timing:
+    # Claude: detect by the model-name line in the status area. The ❯ prompt
+    # cursor sits ~16 lines above the bottom of a live pane, so tail -15 plus
+    # command-substitution trailing-newline stripping leaves only the status
+    # line ("Opus 4.6 (1M context) ...") and the "accept edits" hint visible
+    # to the classifier. The model name is the load-bearing signal.
+    # Then classify state:
     #   - "Esc to cancel" → permission prompt (always reliable)
     #   - Recent pane output (< 8s) → agent is running (streaming/tools)
     #   - No recent output → idle at prompt
-    if echo "$last_lines" | grep -qE "^❯|Opus|Sonnet|Haiku"; then
+    if echo "$last_lines" | grep -qE "Opus|Sonnet|Haiku"; then
         # Permission prompt — always needs user
         echo "$last_lines" | grep -q "Esc to cancel" && return 0
         # Use pane activity timing — running agents produce constant output

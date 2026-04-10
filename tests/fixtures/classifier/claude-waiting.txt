@@ -1,8 +1,11 @@
-  Updated src/auth/login.ts with OAuth handler.
+  Summary
+  - Task complete. All tests green.
+  - No further changes required.
 
-  All tests passing. Ready for your review.
+✻ Done in 2m 14s
 
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ❯                                                                            │
-╰──────────────────────────────────────────────────────────────────────────────╯
-  ⏵⏵ accept edits on (shift+tab to cycle)               Sonnet 4.5 · 42% context
+───────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────
+   Opus 4.6 (1M context)  ~/some/path/  wt/example-task  CTX: 45%
+  ⏵⏵ accept edits on (shift+tab to cycle)
