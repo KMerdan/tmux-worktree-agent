@@ -1,0 +1,13 @@
+  I'll run the migration script now.
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Tool use: Bash                                                               │
+│                                                                              │
+│   ./scripts/migrate-db.sh --production                                       │
+│                                                                              │
+│ Do you want to proceed?                                                      │
+│ ❯ 1. Yes                                                                     │
+│   2. Yes, and don't ask again for Bash commands                              │
+│   3. No, tell Claude what to do differently (Esc)                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  Esc to cancel                                              Opus 4.1 · 78%

@@ -1,0 +1,12 @@
+  Thinking...
+
+  I'll start by reading the existing auth module to understand the
+  current structure, then extract the repository layer.
+
+  exec bash -lc 'rg -l "class UserService" src/'
+    src/users/user-service.ts
+    src/users/__tests__/user-service.test.ts
+
+▌ (working — esc to interrupt)
+▌
+  ? for shortcuts  |  ctrl-c to quit  |  model: gpt-5-codex

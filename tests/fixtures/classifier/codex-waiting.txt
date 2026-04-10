@@ -1,0 +1,10 @@
+  Finished refactoring the user service. All 23 tests pass.
+
+  Summary:
+    - Extracted UserRepository interface
+    - Moved password hashing into AuthService
+    - Deleted 3 dead files
+
+▌ ›
+▌
+  ? for shortcuts  |  ctrl-c to quit  |  model: gpt-5-codex

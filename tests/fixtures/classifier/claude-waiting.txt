@@ -1,0 +1,8 @@
+  Updated src/auth/login.ts with OAuth handler.
+
+  All tests passing. Ready for your review.
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⏵⏵ accept edits on (shift+tab to cycle)               Sonnet 4.5 · 42% context

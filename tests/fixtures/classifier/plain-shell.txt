@@ -1,0 +1,11 @@
+total 48
+drwxr-xr-x  12 user  staff   384 Apr 10 09:14 .
+drwxr-xr-x   8 user  staff   256 Apr  9 18:02 ..
+-rw-r--r--   1 user  staff  1248 Apr 10 09:12 README.md
+drwxr-xr-x   5 user  staff   160 Apr 10 09:14 scripts
+drwxr-xr-x   4 user  staff   128 Apr 10 09:10 tests
+
+user@laptop project % git status
+On branch main
+nothing to commit, working tree clean
+user@laptop project %

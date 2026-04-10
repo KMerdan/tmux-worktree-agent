@@ -26,12 +26,20 @@ truncate() {
     fi
 }
 
-# Check if pane content shows an agent waiting for user input
-# Returns 0 (true) if agent is at a prompt, 1 otherwise
-is_waiting_for_input() {
-    local pane_id="$1"
-    local last_lines
-    last_lines=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -15)
+# Pure classifier for agent state given already-captured pane data.
+# No tmux calls, no side effects — safe to unit test with fixture strings.
+#
+# Inputs:
+#   $1  last_lines        — captured pane text (typically the last ~15 lines)
+#   $2  pane_activity_ts  — unix timestamp of last pane activity (#{pane_activity})
+#   $3  current_ts        — unix timestamp "now" (caller passes $(date +%s))
+#
+# Returns: 0 if the agent appears to be waiting for input, 1 otherwise.
+_classify_pane_state() {
+    local last_lines="$1"
+    local pane_activity_ts="$2"
+    local current_ts="$3"
+
     [ -z "$last_lines" ] && return 1
 
     # Codex: always shows "› " and "? for shortcuts" as permanent UI frame
@@ -51,16 +59,25 @@ is_waiting_for_input() {
         # Permission prompt — always needs user
         echo "$last_lines" | grep -q "Esc to cancel" && return 0
         # Use pane activity timing — running agents produce constant output
-        local pane_activity current_time
-        pane_activity=$(tmux display-message -t "$pane_id" -p "#{pane_activity}" 2>/dev/null)
-        current_time=$(date +%s)
-        if [ -n "$pane_activity" ] && [ $((current_time - pane_activity)) -lt 8 ]; then
+        if [ -n "$pane_activity_ts" ] && [ $((current_ts - pane_activity_ts)) -lt 8 ]; then
             return 1  # recent output — running
         fi
         return 0  # no recent output — idle at prompt
     fi
 
     return 1
+}
+
+# Check if pane content shows an agent waiting for user input
+# Returns 0 (true) if agent is at a prompt, 1 otherwise
+is_waiting_for_input() {
+    local pane_id="$1"
+    local last_lines pane_activity current_ts
+    last_lines=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -15)
+    [ -z "$last_lines" ] && return 1
+    pane_activity=$(tmux display-message -t "$pane_id" -p "#{pane_activity}" 2>/dev/null)
+    current_ts=$(date +%s)
+    _classify_pane_state "$last_lines" "$pane_activity" "$current_ts"
 }
 
 # Determine agent status for a session
