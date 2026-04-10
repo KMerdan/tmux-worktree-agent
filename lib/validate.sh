@@ -124,11 +124,35 @@ _path_matches_scope() {
     return 1
 }
 
-# Filter out plugin scaffolding files from a file list
-# These are injected by the harness and are not agent work
+# Filter out plugin scaffolding files from a file list.
+# A file is filtered only if it matches a scaffolding pattern AND is not
+# tracked in parent_branch — tracked files are real project files whose
+# modifications must always be seen by validation, even if their names
+# collide with scaffolding patterns (e.g. a project's own CLAUDE.md).
 _filter_scaffolding() {
     local input="$1"
-    echo "$input" | grep -v -E '^\.shared$|^\.shared/|^wt-.*\.md$|^CLAUDE\.md$|^AGENTS\.md$|^GEMINI\.md$|^\.wta/' || true
+    local worktree_path="$2"
+    local parent_branch="$3"
+
+    [ -z "$input" ] && return 0
+
+    local tracked
+    tracked=$(git -C "$worktree_path" ls-tree -r "$parent_branch" --name-only 2>/dev/null)
+
+    local pattern='^\.shared$|^\.shared/|^wt-.*\.md$|^CLAUDE\.md$|^AGENTS\.md$|^GEMINI\.md$|^\.wta/'
+
+    while IFS= read -r file; do
+        [ -z "$file" ] && continue
+        if echo "$file" | grep -qE "$pattern"; then
+            # Matches scaffolding pattern — keep it only if tracked in parent
+            if echo "$tracked" | grep -qFx "$file"; then
+                echo "$file"
+            fi
+            # else: drop (unrecognized scaffolding)
+        else
+            echo "$file"
+        fi
+    done <<< "$input"
 }
 
 # ── Check: Scope Enforcement ──────────────────────────────────────────
@@ -156,7 +180,7 @@ check_scope() {
     # Get actual changed files, excluding plugin scaffolding
     local changed_files_raw changed_files
     changed_files_raw=$(cd "$worktree_path" && git diff --name-only "${parent_branch}...HEAD" 2>/dev/null)
-    changed_files=$(_filter_scaffolding "$changed_files_raw")
+    changed_files=$(_filter_scaffolding "$changed_files_raw" "$worktree_path" "$parent_branch")
 
     if [ -z "$changed_files" ]; then
         jq -n --argjson scoped "$(_json_array "$scoped_files")" '{
@@ -280,7 +304,7 @@ check_broadcast() {
     # Get actual changed files, excluding plugin scaffolding
     local actual_files_raw actual_files
     actual_files_raw=$(cd "$worktree_path" && git diff --name-only "${parent_branch}...HEAD" 2>/dev/null)
-    actual_files=$(_filter_scaffolding "$actual_files_raw")
+    actual_files=$(_filter_scaffolding "$actual_files_raw" "$worktree_path" "$parent_branch")
 
     # Find files in actual but not in claimed (agent forgot to report)
     local missing=""

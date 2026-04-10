@@ -655,6 +655,7 @@ Run commands with: \`bash ${wta_path} <command> [args...]\`
 - **Confirm with the user** before running any mutating command (spawn, send, kill)
 - **Merge in dependency order** — if TASK-B depends on TASK-A, merge A first
 - **Validate before merging** — run \`wta validate <session>\` or \`wta merge-check <session>\` before any merge. The validation pipeline automatically checks: scope enforcement (agent stayed within Scoped Files), broadcast accuracy (Files Modified matches git diff), build/test (if configured in \`.wta/validate.conf\`), AST rules, and code graph integrity. Do NOT merge sessions with failing checks.
+- **Validation PASS is necessary, not sufficient** — the pipeline catches scope violations, dishonest broadcasts, broken builds, and failing tests. It does NOT catch semantic bugs. Always read the diff before merging, even when all checks pass.
 - Task agents write their results to \`.shared/broadcasts/TASK-<id>.md\`
 - Task agents read shared context from \`.shared/context.md\` (seeded from task.md preamble)
 - Branch convention: each task gets \`wt/<sanitized-task-id>\`

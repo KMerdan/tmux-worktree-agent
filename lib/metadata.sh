@@ -12,9 +12,17 @@ expand_tilde() {
     echo "${path/#\~/$HOME}"
 }
 
-# Initialize metadata file if it doesn't exist
+# Initialize metadata file if it doesn't exist.
+# Also quarantines corrupted metadata (invalid JSON) by renaming it with a
+# timestamp suffix and starting fresh — the bad file is preserved for manual
+# recovery, not deleted.
 init_metadata() {
     if [ ! -f "$METADATA_FILE" ]; then
+        echo '{}' > "$METADATA_FILE"
+        return
+    fi
+    if ! jq -e . "$METADATA_FILE" >/dev/null 2>&1; then
+        mv "$METADATA_FILE" "${METADATA_FILE}.corrupted.$(date +%s)"
         echo '{}' > "$METADATA_FILE"
     fi
 }
