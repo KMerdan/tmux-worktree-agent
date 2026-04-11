@@ -325,12 +325,13 @@ Things a thoughtful orchestrator usually does (priors, not rules):
 
 ## Decide The Next Wake
 
-Based on what you just observed, choose a delay for \`ScheduleWakeup\`:
+Based on what you just observed, choose a delay for \`ScheduleWakeup\`. The prompt cache has a 5-minute TTL, so **avoid 300s** — it is the worst of both worlds (cache miss without amortizing it). Pick from:
 
-- Active dialog or in-progress build to watch → **60–270s** (keeps prompt cache warm)
-- Agents working, nothing imminent → **300–600s**
-- Everything idle, waiting on slow work → **1200–1800s** (amortizes the cache miss over a long wait)
+- Default — any session is active, dialogs in flight, builds running, broadcasts pending, or you just nudged an agent → **60–270s** (stays inside the cache window; cheap and fast)
+- Truly idle — every session is waiting on long background work (e.g. a multi-minute compile with nothing else to observe) → **1200–1800s** (commits to one cache miss and amortizes it across a long wait)
 - Nothing left to orchestrate (no sessions, or all merged, or everything remaining is stuck) → **STOP**: print a final summary (merged / skipped / stuck) and do NOT call ScheduleWakeup. The loop ends.
+
+When in doubt, prefer the 60–270s range. Frequent cheap ticks beat slow expensive ones.
 
 When continuing, call ScheduleWakeup with the chosen delay and pass this entire message back verbatim as the \`prompt\` field so the next tick repeats the same mission."
 
