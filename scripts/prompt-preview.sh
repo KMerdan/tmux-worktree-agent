@@ -56,6 +56,25 @@ case "$selection" in
         echo "${DIM}Uses parent_branch from metadata (not hardcoded main).${NC}"
         echo "${DIM}Stops on merge conflicts — does not force resolve.${NC}"
         ;;
+    "Start Autopilot")
+        echo "${BOLD}Start Autopilot${NC}"
+        echo ""
+        echo "Turns the current pane's agent into a self-managing"
+        echo "orchestrator via Claude Code's ${CYAN}/loop${NC} dynamic mode."
+        echo ""
+        echo "Each tick the orchestrator:"
+        echo ""
+        echo "  • Checks its spawned sub-sessions (wta status/capture)"
+        echo "  • Answers safe dialogs, escalates unfamiliar ones"
+        echo "  • Merges sessions that wta merge-check reports ready"
+        echo "  • Kills done sessions and flips task.md status"
+        echo "  • Decides the next wake delay itself (60s–30m)"
+        echo "  • Stops when everything is merged or stuck"
+        echo ""
+        echo "${DIM}No decision tree — the orchestrator uses judgment,${NC}"
+        echo "${DIM}not a hardcoded runbook. Context persists across wakes.${NC}"
+        echo "${DIM}Base branch auto-filled from current HEAD at press time.${NC}"
+        ;;
     "Validate session")
         echo "${BOLD}Validate Session${NC}"
         echo ""

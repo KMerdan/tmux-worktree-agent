@@ -263,6 +263,81 @@ Write the file now.'
 }
 
 # ---------------------------------------------------------------------------
+# Prompt: Start Autopilot (/loop dynamic-mode orchestrator)
+# ---------------------------------------------------------------------------
+prompt_start_autopilot() {
+    # Gather dynamic repo context (same pattern as prompt_generate_tasks)
+    local pane_cwd
+    pane_cwd=$(tmux display-message -p '#{pane_current_path}')
+
+    local repo_path=""
+    repo_path=$(cd "$pane_cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || true
+    if [ -z "$repo_path" ]; then
+        log_error "Not in a git repository"
+        exit 1
+    fi
+
+    local repo_name
+    repo_name=$(get_repo_name "$repo_path")
+
+    local current_branch=""
+    current_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+    local branch_context=""
+    if [ -n "$current_branch" ]; then
+        branch_context="
+## Merge Target
+- **Base branch**: \`${current_branch}\` (sub-task branches merge here when ready)
+"
+    fi
+
+    local text="/loop You are the orchestrator for repo **${repo_name}**. Earlier in this session you spawned task sub-sessions via \`wta spawn\`. This message is an autopilot tick: observe the spawned sessions, decide what (if anything) to do, then schedule the next wake.
+${branch_context}
+## What You Can Observe (read-only, cheap — use as needed, not all at once)
+
+- \`wta status ${repo_name}\` — sessions and agent state
+- \`wta capture <session>\` — last 40 lines of a session's pane
+- \`wta topology <task.md>\` — dependency graph + completion state
+- \`wta broadcasts ${repo_name}\` — sub-agent completion reports
+- \`wta diff <session>\` — git diff vs base branch
+- \`wta validate <session>\` — deterministic scope/broadcast/build checks
+- \`wta merge-check <session>\` — validation + merge-readiness JSON
+
+## What You Can Do (mutating)
+
+- \`wta send <session> <text>\` — answer a dialog / nudge an agent
+- \`git -C <main_repo_path> merge <branch> --no-edit\` — integrate finished work
+- \`wta kill <session>\` — cleanup session + worktree + branch
+- edit \`task.md\` — flip \`- [ ]\` → \`- [x]\`
+
+## Your Judgment, Not a Script
+
+There is no decision tree here. Look at the state, use your own reasoning, act. You are a Claude Code session yourself — you have orchestrated work before. Context persists across /loop wakes, so remember what you saw on prior ticks and notice regressions.
+
+Things a thoughtful orchestrator usually does (priors, not rules):
+
+- Answer dialogs that are obviously safe; leave unfamiliar ones alone and note them
+- Merge when \`wta merge-check\` reports \`merge_ready: true\`, in topology dependency order
+- Kill sessions after successful merge and flip their task.md status to \`[x]\`
+- Never force-resolve a merge conflict — stop and escalate to the user
+- If a session looks stuck across multiple ticks, escalate instead of retrying
+- Prefer fewer tool calls — only drill into sessions whose state has changed since last tick
+
+## Decide The Next Wake
+
+Based on what you just observed, choose a delay for \`ScheduleWakeup\`:
+
+- Active dialog or in-progress build to watch → **60–270s** (keeps prompt cache warm)
+- Agents working, nothing imminent → **300–600s**
+- Everything idle, waiting on slow work → **1200–1800s** (amortizes the cache miss over a long wait)
+- Nothing left to orchestrate (no sessions, or all merged, or everything remaining is stuck) → **STOP**: print a final summary (merged / skipped / stuck) and do NOT call ScheduleWakeup. The loop ends.
+
+When continuing, call ScheduleWakeup with the chosen delay and pass this entire message back verbatim as the \`prompt\` field so the next tick repeats the same mission."
+
+    send_prompt_to_agent "$text" "Autopilot loop started in current pane"
+}
+
+# ---------------------------------------------------------------------------
 # Prompt: Update constraints
 # ---------------------------------------------------------------------------
 prompt_update_constraints() {
@@ -708,6 +783,7 @@ main() {
     menu+="Start sub-agent task
 Generate task.md
 Merge completed tasks
+Start Autopilot
 Validate session
 Update constraints
 Simplify project
@@ -740,6 +816,9 @@ Manage custom prompts"
             ;;
         "Merge completed tasks")
             exec "$SCRIPT_DIR/merge-orchestrator.sh"
+            ;;
+        "Start Autopilot")
+            prompt_start_autopilot
             ;;
         "Validate session")
             action_validate_session
