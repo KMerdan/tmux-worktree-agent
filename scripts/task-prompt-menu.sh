@@ -323,17 +323,12 @@ Things a thoughtful orchestrator usually does (priors, not rules):
 - If a session looks stuck across multiple ticks, escalate instead of retrying
 - Prefer fewer tool calls — only drill into sessions whose state has changed since last tick
 
-## Decide The Next Wake
+## Next Wake
 
-Based on what you just observed, choose a delay for \`ScheduleWakeup\`. The prompt cache has a 5-minute TTL, so **avoid 300s** — it is the worst of both worlds (cache miss without amortizing it). Pick from:
+Fixed cadence. Two outcomes only:
 
-- Default — any session is active, dialogs in flight, builds running, broadcasts pending, or you just nudged an agent → **60–270s** (stays inside the cache window; cheap and fast)
-- Truly idle — every session is waiting on long background work (e.g. a multi-minute compile with nothing else to observe) → **1200–1800s** (commits to one cache miss and amortizes it across a long wait)
-- Nothing left to orchestrate (no sessions, or all merged, or everything remaining is stuck) → **STOP**: print a final summary (merged / skipped / stuck) and do NOT call ScheduleWakeup. The loop ends.
-
-When in doubt, prefer the 60–270s range. Frequent cheap ticks beat slow expensive ones.
-
-When continuing, call ScheduleWakeup with the chosen delay and pass this entire message back verbatim as the \`prompt\` field so the next tick repeats the same mission."
+- **Still work to do** (any session alive that isn't permanently stuck) → call \`ScheduleWakeup\` with \`delaySeconds: 60\` and pass this entire message back verbatim as the \`prompt\` field. 60s is inside the prompt-cache window, so every tick is cheap.
+- **Nothing left** (no sessions, or all merged, or everything remaining is stuck) → **STOP**: print a final summary (merged / skipped / stuck) and do NOT call ScheduleWakeup. The loop ends."
 
     send_prompt_to_agent "$text" "Autopilot loop started in current pane"
 }

@@ -68,7 +68,7 @@ case "$selection" in
         echo "  • Answers safe dialogs, escalates unfamiliar ones"
         echo "  • Merges sessions that wta merge-check reports ready"
         echo "  • Kills done sessions and flips task.md status"
-        echo "  • Defaults to 60–270s ticks (cache-warm window)"
+        echo "  • Fires every 60s (cache-warm, predictable)"
         echo "  • Stops when everything is merged or stuck"
         echo ""
         echo "${DIM}No decision tree — the orchestrator uses judgment,${NC}"
