@@ -663,8 +663,6 @@ Run commands with: \`bash ${wta_path} <command> [args...]\`
   \`.shared/context.md\`, and \`.shared/broadcasts/\`. Do not assume they can run wta commands.
 - **Validation config** — if the project has \`.wta/validate.conf\`, it defines build/test commands and check strictness. Review it when setting up new task batches.
 
-${end_marker}
-
 <!-- wta:docs-pyramid:start -->
 
 ## Documentation Pyramid — Maintain This Structure
@@ -695,9 +693,27 @@ Layer 4: .agent-docs/{architecture,design,guides}/  (full reference, deep dives 
 6. **When creating task.md**, reference \`.agent-docs/AGENTS.md\` + specific \`.agent-docs/context/*.md\` files in the preamble.
 
 <!-- wta:docs-pyramid:end -->
+
+${end_marker}
 WTA_EOF
 
     if [ -f "$claude_md" ]; then
+        # Pre-pass: strip any pre-existing docs-pyramid blocks. A prior bug
+        # placed the pyramid outside the orchestrator markers, so each
+        # prefix+G call carried stale blocks forward in after_file while
+        # injecting a fresh one — accumulating duplicates. The pyramid now
+        # lives inside the orchestrator markers (excised by the awk below),
+        # but this pre-pass self-heals files that still carry residue from
+        # the old logic, including any lingering stub references.
+        local pyramid_clean
+        pyramid_clean=$(mktemp)
+        awk '
+            /<!-- wta:docs-pyramid:start -->/ { skip=1; next }
+            /<!-- wta:docs-pyramid:end -->/   { skip=0; next }
+            !skip
+        ' "$claude_md" > "$pyramid_clean"
+        mv "$pyramid_clean" "$claude_md"
+
         if grep -q "$start_marker" "$claude_md"; then
             # Replace existing section between markers
             local before_file after_file tmpfile
