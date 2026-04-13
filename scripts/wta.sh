@@ -298,6 +298,60 @@ cmd_spawn() {
         extract_task_block "$task_file" "$found_start" "$found_end"
     } > "$task_output"
 
+    # Seed .claude/settings.local.json so the agent doesn't need to
+    # approve common cargo / git / build-tool invocations one by one.
+    # Idempotent: only writes if the file is missing.
+    local claude_settings_dir="$worktree_path/.claude"
+    local claude_settings_file="$claude_settings_dir/settings.local.json"
+    if [ ! -f "$claude_settings_file" ]; then
+        mkdir -p "$claude_settings_dir"
+        cat > "$claude_settings_file" <<'SETTINGS_EOF'
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo run:*)",
+      "Bash(rustc:*)",
+      "Bash(git:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git branch:*)",
+      "Bash(git show:*)",
+      "Bash(./target/debug/*)",
+      "Bash(./target/release/*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(echo:*)",
+      "Bash(tmux -V)",
+      "Bash(tmux kill-session:*)",
+      "Bash(which:*)",
+      "Read(//**)",
+      "Write(//**)",
+      "Edit(//**)"
+    ]
+  }
+}
+SETTINGS_EOF
+        echo "Seeded .claude/settings.local.json (F-004 mitigation)."
+    fi
+
     # Resolve parent session (the orchestrator calling us)
     local parent_session=""
     parent_session=$(get_current_session 2>/dev/null || true)
