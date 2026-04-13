@@ -331,12 +331,30 @@ cmd_spawn() {
     echo "  Task:      $found_tid — $found_title"
 }
 
-# ── send <session> <text> ─────────────────────────────────────────────
-
+# ── send <session> [--no-enter] <text> ────────────────────────────────
+#
+# Pastes <text> into an agent's terminal and (by default) submits it with
+# Enter. TUI agents like Claude Code sometimes miss a trailing `C-m` fired
+# immediately after paste-buffer because the input box has not finished
+# absorbing the pasted bytes. We fix that with two changes:
+#   1. Sleep briefly after paste so the TUI's paste handler settles.
+#   2. Send `Enter` (the symbolic keyname) instead of `C-m`.
+#
+# Flags:
+#   --no-enter    Paste the text but do not submit. Useful when composing
+#                 multi-part input, or when the caller will follow up with
+#                 `wta enter <session>` at the right moment.
+#
 cmd_send() {
-    local session_name="${1:?Usage: wta send <session> <text>}"
+    local submit=true
+    if [ "${1:-}" = "--no-enter" ]; then
+        submit=false
+        shift
+    fi
+
+    local session_name="${1:?Usage: wta send [--no-enter] <session> <text>}"
     shift
-    local text="${*:?Usage: wta send <session> <text>}"
+    local text="${*:?Usage: wta send [--no-enter] <session> <text>}"
 
     if ! tmux has-session -t "$session_name" 2>/dev/null; then
         echo "Session '$session_name' is not running."
@@ -349,10 +367,34 @@ cmd_send() {
 
     tmux load-buffer "$tmpfile"
     tmux paste-buffer -t "$session_name"
-    tmux send-keys -t "$session_name" C-m
-
     rm -f "$tmpfile"
-    echo "Sent to $session_name."
+
+    if [ "$submit" = true ]; then
+        # Let the TUI finish absorbing the paste, then submit.
+        sleep 0.15
+        tmux send-keys -t "$session_name" Enter
+        echo "Sent to $session_name."
+    else
+        echo "Pasted to $session_name (not submitted — call 'wta enter $session_name' to submit)."
+    fi
+}
+
+# ── enter <session> ───────────────────────────────────────────────────
+#
+# Sends a single Enter keypress to a session. Useful when a prior `wta send`
+# left input sitting in the prompt without submitting, or when approving a
+# permission dialog that already has the right option highlighted.
+#
+cmd_enter() {
+    local session_name="${1:?Usage: wta enter <session>}"
+
+    if ! tmux has-session -t "$session_name" 2>/dev/null; then
+        echo "Session '$session_name' is not running."
+        return 1
+    fi
+
+    tmux send-keys -t "$session_name" Enter
+    echo "Enter sent to $session_name."
 }
 
 # ── kill <session> ────────────────────────────────────────────────────
@@ -556,9 +598,13 @@ Read-only:
   merge-check <session>      Validate + merge-readiness report
 
 Mutating:
-  spawn <task.md> <task-id>  Create worktree + session + start agent
-  send <session> <text>      Send text to an agent's terminal
-  kill <session>             Full cleanup (session + worktree + metadata + branch)
+  spawn <task.md> <task-id>       Create worktree + session + start agent
+  send [--no-enter] <session> <text>
+                                  Paste text into an agent's terminal; submits
+                                  with Enter unless --no-enter is given
+  enter <session>                 Send a single Enter keypress (submit pending input
+                                  or confirm a highlighted permission option)
+  kill <session>                  Full cleanup (session + worktree + metadata + branch)
 EOF
 }
 
@@ -575,6 +621,7 @@ case "$command" in
     merge-check) cmd_merge_check "$@" ;;
     spawn)       cmd_spawn "$@" ;;
     send)        cmd_send "$@" ;;
+    enter)       cmd_enter "$@" ;;
     kill)        cmd_kill "$@" ;;
     help|--help|-h|"")
         usage
