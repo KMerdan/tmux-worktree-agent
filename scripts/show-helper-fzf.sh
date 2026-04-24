@@ -212,7 +212,7 @@ PREVIEW_EOF
         --preview-window right:50%:wrap:border-left \
         --bind 'ctrl-/:toggle-preview' \
         --bind 'tab:toggle-preview' \
-        --delimiter '|' \
+        --delimiter '[|]' \
         --with-nth 2 \
         --ansi \
         --cycle \

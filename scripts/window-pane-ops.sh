@@ -65,7 +65,7 @@ select_target_window() {
         --layout=reverse \
         --height=100% \
         --header="Select target window | Enter: target | Esc: cancel" \
-        --delimiter='|' \
+        --delimiter='[|]' \
         --with-nth=3,4,5 \
         --preview='tmux list-panes -t {1} -F "[%#{pane_index}] #{?pane_active,*, } #{pane_current_command} | #{pane_title} | #{pane_current_path}"' \
         --preview-window=right:55%:wrap \
@@ -88,7 +88,7 @@ select_source_windows() {
         --layout=reverse \
         --height=100% \
         --header="Select source windows | Tab: mark | Enter: merge into target | Esc: cancel" \
-        --delimiter='|' \
+        --delimiter='[|]' \
         --with-nth=3,4,5 \
         --preview='tmux list-panes -t {1} -F "[%#{pane_index}] #{?pane_active,*, } #{pane_current_command} | #{pane_title} | #{pane_current_path}"' \
         --preview-window=right:55%:wrap \
