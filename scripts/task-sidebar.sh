@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 
-# Persistent task sidebar for tmux-worktree-agent
-# Shows task.md progress in a narrow fzf pane with interactive actions
+# Persistent task / test sidebars for tmux-worktree-agent
+# Shows task.md and/or task-test.md progress in narrow fzf panes with
+# interactive actions. Up to two sidebars can coexist on the right side
+# of a window: tasks on top, tests stacked underneath (50/50 vertical
+# split). When only task-test.md exists, the tests pane takes the full
+# right split.
 #
 # Lifecycle:
-#   - Sidebar created  → sets sidebar_task_file in host session's metadata
-#   - Sidebar pane dies → trap clears sidebar_task_file from metadata
-#   - Host session killed (prefix+K) → entire metadata entry deleted (field goes with it)
+#   - Tasks sidebar created → sets sidebar_task_file in host session's metadata
+#   - Tests sidebar created → sets sidebar_test_task_file in host session's metadata
+#   - Sidebar pane dies → trap clears the matching field from metadata
+#   - Host session killed (prefix+K) → entire metadata entry deleted (both fields go with it)
 #   - prefix+S in task session → looks up repo in metadata → finds sidebar host → jumps back
 #
+# Toggle behaviour (prefix+S):
+#   No sidebar present → spawn sidebar(s) for any task.md / task-test.md found
+#   Sidebar(s) present → cycle focus main → tasks → tests → main
+#
 # Subcommands:
-#   toggle       — keybinding entry: create sidebar / focus / unfocus / jump back
+#   toggle       — keybinding entry: create sidebar(s) / cycle focus / jump back
 #   fzf-loop     — runs inside the sidebar pane (persistent fzf)
+#                  args: <repo_path> <task_file> <host_session> [label] [is_test]
 #   list         — output task lines (called by fzf reload)
 #   kill-task    — remove a task's session+worktree (called by fzf ctrl-d)
 
@@ -23,7 +33,8 @@ source "$PLUGIN_DIR/lib/metadata.sh"
 source "$PLUGIN_DIR/lib/task-parser.sh"
 
 SIDEBAR_TITLE="@task-sidebar"
-SIDEBAR_WIDTH=30
+TEST_SIDEBAR_TITLE="@task-test-sidebar"
+SIDEBAR_WIDTH=40
 
 # ── Build display lines for the narrow fzf ──────────────────────────
 # Each line: <visible_text>\t<task_id>\t<status>\t<start>\t<end>
@@ -315,11 +326,17 @@ cmd_fzf_loop() {
     local repo_path="$1"
     local task_file="$2"
     local host_session="$3"
+    local label="${4:-Tasks}"
+    local is_test="${5:-false}"
     local repo_name
     repo_name=$(get_repo_name "$repo_path")
 
-    # Clean up sidebar_task_file when this pane exits (crash, exit, pane killed)
-    trap 'clear_sidebar_task_file "$host_session" 2>/dev/null' EXIT
+    # Clean up the right metadata field when this pane exits (crash, exit, pane killed)
+    if [ "$is_test" = "true" ]; then
+        trap 'clear_sidebar_test_task_file "$host_session" 2>/dev/null' EXIT
+    else
+        trap 'clear_sidebar_task_file "$host_session" 2>/dev/null' EXIT
+    fi
 
     while true; do
         local lines
@@ -341,7 +358,7 @@ cmd_fzf_loop() {
             --layout=reverse \
             --no-info \
             --no-separator \
-            --header="Tasks $counts" \
+            --header="$label $counts" \
             --header-first \
             --prompt="" \
             --pointer="▸" \
@@ -373,11 +390,11 @@ cmd_list() {
     build_sidebar_lines "$1" "$3" "$2" 2>/dev/null
 }
 
-# ── Check if a session has a live sidebar pane ─────────────────────
+# ── Check if a session has a live sidebar pane (task or test) ──────
 session_has_sidebar_pane() {
     local session_name="$1"
     tmux list-panes -t "$session_name" -F '#{pane_title}' 2>/dev/null \
-        | grep -q "$SIDEBAR_TITLE"
+        | grep -qE "$SIDEBAR_TITLE|$TEST_SIDEBAR_TITLE"
 }
 
 # ── Toggle sidebar (called by keybinding via run-shell) ────────────
@@ -385,20 +402,39 @@ cmd_toggle() {
     local current_session
     current_session=$(tmux display-message -p '#S' 2>/dev/null)
 
-    # 1) This session has a sidebar pane → toggle focus within the session
-    local sidebar_info
-    sidebar_info=$(tmux list-panes -F '#{pane_id}:#{pane_title}:#{pane_active}' 2>/dev/null \
-        | grep "$SIDEBAR_TITLE" | head -1)
+    # 1) This session already has one or both sidebar panes →
+    #    cycle focus main → tasks → tests → main
+    local panes
+    panes=$(tmux list-panes -F '#{pane_id}:#{pane_title}:#{pane_active}' 2>/dev/null)
 
-    if [ -n "$sidebar_info" ]; then
-        local pane_id pane_active
-        pane_id=$(echo "$sidebar_info" | cut -d: -f1)
-        pane_active=$(echo "$sidebar_info" | cut -d: -f3)
+    local tasks_pane tasks_pane_active test_pane test_pane_active
+    tasks_pane=$(echo "$panes" | grep ":$SIDEBAR_TITLE:" | head -1 | cut -d: -f1)
+    tasks_pane_active=$(echo "$panes" | grep ":$SIDEBAR_TITLE:" | head -1 | cut -d: -f3)
+    test_pane=$(echo "$panes" | grep ":$TEST_SIDEBAR_TITLE:" | head -1 | cut -d: -f1)
+    test_pane_active=$(echo "$panes" | grep ":$TEST_SIDEBAR_TITLE:" | head -1 | cut -d: -f3)
 
-        if [ "$pane_active" = "1" ]; then
+    if [ -n "$tasks_pane" ] || [ -n "$test_pane" ]; then
+        # Focus is on tasks → go to tests (if present), else back to main
+        if [ "$tasks_pane_active" = "1" ]; then
+            if [ -n "$test_pane" ]; then
+                tmux select-pane -t "$test_pane"
+            else
+                tmux select-pane -l
+            fi
+            return 0
+        fi
+
+        # Focus is on tests → go back to main
+        if [ "$test_pane_active" = "1" ]; then
             tmux select-pane -l
+            return 0
+        fi
+
+        # Focus is on main → go to tasks (preferred), or tests if no tasks pane
+        if [ -n "$tasks_pane" ]; then
+            tmux select-pane -t "$tasks_pane"
         else
-            tmux select-pane -t "$pane_id"
+            tmux select-pane -t "$test_pane"
         fi
         return 0
     fi
@@ -412,6 +448,9 @@ cmd_toggle() {
         if [ -n "$repo" ]; then
             local sidebar_host
             sidebar_host=$(find_sidebar_session_for_repo "$repo")
+            if [ -z "$sidebar_host" ]; then
+                sidebar_host=$(find_sidebar_test_session_for_repo "$repo")
+            fi
 
             # Don't jump to ourselves
             if [ -n "$sidebar_host" ] && [ "$sidebar_host" != "$current_session" ]; then
@@ -420,8 +459,9 @@ cmd_toggle() {
                     tmux switch-client -t "$sidebar_host"
                     return 0
                 else
-                    # Stale — clean it up
+                    # Stale — clean up both fields
                     clear_sidebar_task_file "$sidebar_host" 2>/dev/null
+                    clear_sidebar_test_task_file "$sidebar_host" 2>/dev/null
                 fi
             fi
         fi
@@ -429,7 +469,7 @@ cmd_toggle() {
         # Fall through to step 3 — this managed session can host its own sidebar
     fi
 
-    # 3) Create sidebar if task.md exists in the repo
+    # 3) Create sidebar(s) if task.md and/or task-test.md exist in the repo
 
     local main_pane_path
     main_pane_path=$(tmux display-message -p '#{pane_current_path}')
@@ -449,29 +489,65 @@ cmd_toggle() {
         fi
     done
 
-    if [ -z "$task_file" ]; then
-        tmux display-message "No task.md found in repo root"
-        return 1
+    local test_task_file=""
+    for name in task-test.md tasks-test.md TASK-TEST.md TASKS-TEST.md; do
+        if [ -f "$repo_path/$name" ]; then
+            test_task_file="$repo_path/$name"
+            break
+        fi
+    done
+
+    # Validate whatever we found; drop invalid files but tell the user why,
+    # so a malformed file is visible rather than silently ignored.
+    if [ -n "$task_file" ] && ! validate_task_file "$task_file" >/dev/null 2>&1; then
+        tmux display-message "task.md invalid format — skipping tasks sidebar"
+        task_file=""
+    fi
+    if [ -n "$test_task_file" ] && ! validate_task_file "$test_task_file" >/dev/null 2>&1; then
+        tmux display-message "task-test.md invalid format — skipping tests sidebar"
+        test_task_file=""
     fi
 
-    if ! validate_task_file "$task_file" >/dev/null 2>&1; then
-        tmux display-message "Invalid task file format"
+    if [ -z "$task_file" ] && [ -z "$test_task_file" ]; then
+        tmux display-message "No task.md or task-test.md found in repo root"
         return 1
     fi
-
-    # Register this session as the sidebar host in metadata
-    set_sidebar_task_file "$current_session" "$task_file"
 
     local main_pane_id
     main_pane_id=$(tmux display-message -p '#{pane_id}')
 
-    # Open narrow right split running the fzf loop
-    # Pass host session name so the trap can clear the field on exit
-    tmux split-window -h -l "$SIDEBAR_WIDTH" -t "$main_pane_id" \
-        "bash '${SCRIPT_DIR}/task-sidebar.sh' fzf-loop '${repo_path}' '${task_file}' '${current_session}'"
+    local tasks_pane_id=""
 
-    # Tag the new pane so we can find it later
-    tmux select-pane -T "$SIDEBAR_TITLE"
+    # 3a) Open the tasks sidebar (right split) if task.md exists
+    if [ -n "$task_file" ]; then
+        set_sidebar_task_file "$current_session" "$task_file"
+
+        tasks_pane_id=$(tmux split-window -h -l "$SIDEBAR_WIDTH" -t "$main_pane_id" \
+            -P -F '#{pane_id}' \
+            "bash '${SCRIPT_DIR}/task-sidebar.sh' fzf-loop '${repo_path}' '${task_file}' '${current_session}' 'Tasks' 'false'")
+
+        tmux select-pane -t "$tasks_pane_id" -T "$SIDEBAR_TITLE"
+    fi
+
+    # 3b) Open the tests sidebar
+    if [ -n "$test_task_file" ]; then
+        set_sidebar_test_task_file "$current_session" "$test_task_file"
+
+        local test_pane_id
+        if [ -n "$tasks_pane_id" ]; then
+            # Stack under the tasks pane, 50/50
+            test_pane_id=$(tmux split-window -v -p 50 -t "$tasks_pane_id" \
+                -P -F '#{pane_id}' \
+                "bash '${SCRIPT_DIR}/task-sidebar.sh' fzf-loop '${repo_path}' '${test_task_file}' '${current_session}' 'Tests' 'true'")
+        else
+            # No task.md — tests pane takes the full right split
+            test_pane_id=$(tmux split-window -h -l "$SIDEBAR_WIDTH" -t "$main_pane_id" \
+                -P -F '#{pane_id}' \
+                "bash '${SCRIPT_DIR}/task-sidebar.sh' fzf-loop '${repo_path}' '${test_task_file}' '${current_session}' 'Tests' 'true'")
+        fi
+
+        tmux select-pane -t "$test_pane_id" -T "$TEST_SIDEBAR_TITLE"
+    fi
 
     # Return focus to the main pane
     tmux select-pane -t "$main_pane_id"
@@ -480,7 +556,7 @@ cmd_toggle() {
 # ── Dispatch ───────────────────────────────────────────────────────
 case "${1:-toggle}" in
     toggle)     cmd_toggle ;;
-    fzf-loop)   cmd_fzf_loop "$2" "$3" "$4" ;;
+    fzf-loop)   cmd_fzf_loop "$2" "$3" "$4" "$5" "$6" ;;
     list)       cmd_list "$2" "$3" "$4" ;;
     kill-task)  cmd_kill_task "$2" "$3" ;;
     *)          cmd_toggle ;;

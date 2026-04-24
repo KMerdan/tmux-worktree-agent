@@ -305,6 +305,67 @@ empty_count="$(count_sessions)"
 assert_eq "fresh metadata has 0 sessions" "0" "$empty_count"
 
 # ---------------------------------------------------------------------------
+# Section 5b: Sidebar metadata (task and test variants)
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== sidebar metadata ==="
+
+rm -f "$METADATA_FILE"
+init_metadata
+
+save_session "sb-repo-main" "sb-repo" "main" "main" \
+    "/tmp/.worktrees/sb-repo/main" "/tmp/projects/sb-repo" \
+    "false" "" "claude"
+save_session "sb-repo-feat" "sb-repo" "feat" "wt/feat" \
+    "/tmp/.worktrees/sb-repo/feat" "/tmp/projects/sb-repo" \
+    "false" "" "claude"
+
+# --- task sidebar field ---
+set_sidebar_task_file "sb-repo-main" "/tmp/projects/sb-repo/task.md"
+sidebar_field="$(get_session_field "sb-repo-main" "sidebar_task_file")"
+assert_eq "set_sidebar_task_file persists path" "/tmp/projects/sb-repo/task.md" "$sidebar_field"
+
+found_host="$(find_sidebar_session_for_repo "sb-repo")"
+assert_eq "find_sidebar_session_for_repo finds host" "sb-repo-main" "$found_host"
+
+clear_sidebar_task_file "sb-repo-main"
+sidebar_after_clear="$(get_session_field "sb-repo-main" "sidebar_task_file")"
+assert_empty "clear_sidebar_task_file removes the field" "$sidebar_after_clear"
+
+cleared_lookup="$(find_sidebar_session_for_repo "sb-repo")"
+assert_empty "find_sidebar_session_for_repo empty after clear" "$cleared_lookup"
+
+# --- test sidebar field (mirrors above; orthogonal to task field) ---
+set_sidebar_test_task_file "sb-repo-feat" "/tmp/projects/sb-repo/task-test.md"
+test_sidebar_field="$(get_session_field "sb-repo-feat" "sidebar_test_task_file")"
+assert_eq "set_sidebar_test_task_file persists path" "/tmp/projects/sb-repo/task-test.md" "$test_sidebar_field"
+
+found_test_host="$(find_sidebar_test_session_for_repo "sb-repo")"
+assert_eq "find_sidebar_test_session_for_repo finds host" "sb-repo-feat" "$found_test_host"
+
+# Both fields can coexist on different sessions for the same repo
+set_sidebar_task_file "sb-repo-main" "/tmp/projects/sb-repo/task.md"
+both_task_host="$(find_sidebar_session_for_repo "sb-repo")"
+both_test_host="$(find_sidebar_test_session_for_repo "sb-repo")"
+assert_eq "task host independent of test host" "sb-repo-main" "$both_task_host"
+assert_eq "test host independent of task host" "sb-repo-feat" "$both_test_host"
+
+clear_sidebar_test_task_file "sb-repo-feat"
+test_after_clear="$(get_session_field "sb-repo-feat" "sidebar_test_task_file")"
+assert_empty "clear_sidebar_test_task_file removes the field" "$test_after_clear"
+
+# Clearing the test field must not touch the task field on a different session
+task_still_set="$(get_session_field "sb-repo-main" "sidebar_task_file")"
+assert_eq "clearing test field leaves task field intact" "/tmp/projects/sb-repo/task.md" "$task_still_set"
+
+# Set/clear on a session not in metadata should fail (no panic, just non-zero)
+if set_sidebar_test_task_file "ghost-session" "/tmp/x.md" 2>/dev/null; then
+    fail "set_sidebar_test_task_file should fail for unknown session"
+else
+    pass "set_sidebar_test_task_file rejects unknown session"
+fi
+
+# ---------------------------------------------------------------------------
 # Section 6: parse_tasks from lib/task-parser.sh
 # ---------------------------------------------------------------------------
 echo ""

@@ -32,7 +32,9 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 **lib/metadata.sh** - JSON metadata management library
 - All session data persists in `.worktree-sessions.json` as structured JSON
 - Each session stores: repo, topic, branch, worktree_path, main_repo_path, created_at, agent_running, description, agent_cmd, parent_branch, parent_session
+- Optional sidebar fields: sidebar_task_file, sidebar_test_task_file (set when a session is hosting one of the sidebars)
 - Functions: save_session(), get_session_field(), delete_session(), list_sessions(), find_sessions_by_repo(), find_session_by_path()
+- Sidebar helpers: set/clear/find_sidebar_task_file(), set/clear/find_sidebar_test_task_file()
 - Orphan detection: clean_orphaned_metadata() removes entries where both session and worktree are gone
 - Uses jq for all JSON operations
 
@@ -85,6 +87,14 @@ tmux-worktree-agent is a tmux plugin that optimizes workflows for managing multi
 **scripts/session-info.sh** - Status line integration
 - Formats: icon, branch, topic, short, full, status-line
 - Used for tmux status-right integration
+
+**scripts/task-sidebar.sh** - Persistent task / test sidebars (prefix + S)
+- Spawns up to two narrow fzf panes on the right of the window: tasks (from task.md) on top, tests (from task-test.md) stacked underneath (50/50 vertical split). When only one file exists, that pane takes the full right split.
+- Pane titles: `@task-sidebar` and `@task-test-sidebar` (used to find/cycle focus)
+- Toggle behaviour: no sidebar → spawn whichever sidebars apply; sidebars present → cycle focus main → tasks → tests → main; called from a non-host session that has a hosting sibling → switch-client to the host
+- Each sidebar registers itself in metadata (`sidebar_task_file` or `sidebar_test_task_file`) so the toggle can find the host session for the current repo. Exit traps clear the matching field when a pane dies.
+- Invalid task files surface a `tmux display-message` rather than failing silently — visibility over partial success
+- Recognised filenames: task.md / tasks.md / TASK.md / TASKS.md, plus task-test.md / tasks-test.md / TASK-TEST.md / TASKS-TEST.md
 
 ### Directory Structure
 
