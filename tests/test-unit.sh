@@ -517,7 +517,9 @@ source "$PLUGIN_DIR/lib/validate.sh"
 
 # Create a test git repo with changes
 SCOPE_REPO="$TMPDIR_TEST/scope-repo"
-git init --quiet "$SCOPE_REPO"
+# Pin initial branch to main so check_scope/check_broadcast can diff against
+# it on systems where init.defaultBranch is unset or set to master (e.g. CI).
+git init --quiet --initial-branch=main "$SCOPE_REPO"
 (
     cd "$SCOPE_REPO"
     git config user.email "test@test.com"
