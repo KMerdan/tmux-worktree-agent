@@ -128,7 +128,7 @@ _path_matches_scope() {
 # A file is filtered only if it matches a scaffolding pattern AND is not
 # tracked in parent_branch — tracked files are real project files whose
 # modifications must always be seen by validation, even if their names
-# collide with scaffolding patterns (e.g. a project's own CLAUDE.md).
+# collide with scaffolding patterns (e.g. a stray wt-*.md in the project).
 _filter_scaffolding() {
     local input="$1"
     local worktree_path="$2"
@@ -136,10 +136,20 @@ _filter_scaffolding() {
 
     [ -z "$input" ] && return 0
 
-    local tracked
+    # If parent_branch was deleted out-of-band, ls-tree fails and `tracked`
+    # silently becomes empty — every scaffolding-pattern match would then
+    # be treated as untracked and dropped from validation. Surface the failure
+    # so the caller knows the filter is operating with no tracked-file context.
+    local tracked tracked_rc
     tracked=$(git -C "$worktree_path" ls-tree -r "$parent_branch" --name-only 2>/dev/null)
+    tracked_rc=$?
+    if [ "$tracked_rc" -ne 0 ]; then
+        echo "warning: _filter_scaffolding could not list tree of parent_branch='$parent_branch' (rc=$tracked_rc) — files matching scaffolding patterns will be dropped from validation" >&2
+    fi
 
-    local pattern='^\.shared$|^\.shared/|^wt-.*\.md$|^CLAUDE\.md$|^AGENTS\.md$|^GEMINI\.md$|^\.wta/'
+    # Plugin scaffolding paths only — no project-config filenames here.
+    # Per-task config lives at .wta/task-config.md, task description at wt-*.md.
+    local pattern='^\.shared$|^\.shared/|^\.wta$|^\.wta/|^wt-.*\.md$'
 
     while IFS= read -r file; do
         [ -z "$file" ] && continue
@@ -164,6 +174,18 @@ check_scope() {
     local worktree_path="$1"
     local parent_branch="$2"
     local scoped_files="$3"
+
+    if [ "$scoped_files" = "__NO_TASK_FILE__" ]; then
+        jq -n '{
+            check: "scope",
+            pass: true,
+            skipped: "no task file in worktree (scope check requires `wta spawn`)",
+            in_scope: [],
+            out_of_scope: [],
+            untouched_scope: []
+        }'
+        return 0
+    fi
 
     if [ -z "$scoped_files" ]; then
         jq -n '{
@@ -694,11 +716,14 @@ _find_broadcast_file() {
     return 1
 }
 
-# Find scoped files for a session by locating its task block
+# Find scoped files for a session by locating its task block.
+# Emits the sentinel "__NO_TASK_FILE__" when the worktree has no `wt-*.md`
+# (e.g. a session created via prefix+w / prefix+W rather than `wta spawn`)
+# so check_scope can distinguish "task missing" from "task has no scoped files".
 _resolve_scoped_files() {
     local worktree_path="$1"
     local task_file
-    task_file=$(_find_task_file "$worktree_path") || return 0
+    task_file=$(_find_task_file "$worktree_path") || { echo "__NO_TASK_FILE__"; return 0; }
 
     # The task file contains preamble + --- + task block
     # Find the task block's start line (after the ---)

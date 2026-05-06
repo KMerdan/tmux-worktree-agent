@@ -232,12 +232,8 @@ spawn_single_task() {
         "$branch_name" "$worktree_path" "$repo_path" "" "false" "" "$parent_session"
     [ $? -ne 0 ] && return 1
 
-    # Write agent config
-    local agent_cmd_used
-    agent_cmd_used=$(get_session_field "$session_name" "agent_cmd" 2>/dev/null)
-    if [ -n "$agent_cmd_used" ]; then
-        write_agent_config "$worktree_path" "$agent_cmd_used" "$task_id" "$branch_filename"
-    fi
+    # Write task config (agent-agnostic — file at .wta/task-config.md)
+    write_task_config "$worktree_path" "$task_id" "$branch_filename"
 }
 
 # ── Kill a task's session + worktree (no interactive confirmation) ──

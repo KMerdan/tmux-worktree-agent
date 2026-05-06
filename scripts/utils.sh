@@ -110,6 +110,14 @@ is_git_repo() {
     git rev-parse --show-toplevel >/dev/null 2>&1
 }
 
+# Check if the repo at the current working directory has at least one commit.
+# Returns 0 if HEAD resolves, 1 if HEAD is unborn (fresh `git init` with no commits).
+# Worktrees can't be safely created without a commit — git silently infers `--orphan`
+# and produces disjoint histories, which is almost never what the user wants.
+repo_has_commits() {
+    git rev-parse --verify --quiet HEAD >/dev/null
+}
+
 # Get git repository root
 get_repo_root() {
     git rev-parse --show-toplevel 2>/dev/null
@@ -496,32 +504,20 @@ get_current_session() {
     fi
 }
 
-# Map agent command to its config filename
-# claude -> CLAUDE.md, codex -> AGENTS.md, gemini -> GEMINI.md, etc.
-get_agent_config_filename() {
-    local agent_cmd="$1"
-    local agent_name="${agent_cmd%% *}"  # strip args
-
-    case "$agent_name" in
-        claude)   echo "CLAUDE.md" ;;
-        codex)    echo "AGENTS.md" ;;
-        gemini)   echo "GEMINI.md" ;;
-        opencode) echo "AGENTS.md" ;;
-        *)        echo "AGENTS.md" ;;  # AGENTS.md is the most widely supported fallback
-    esac
-}
-
-# Write agent-specific config file into a worktree with task context and broadcast requirement
-write_agent_config() {
+# Write per-task config into the worktree under .wta/ — agent-agnostic.
+# Lives in .wta/task-config.md so it cannot collide with the project's own
+# CLAUDE.md / AGENTS.md / GEMINI.md (which the agent auto-loads for project rules).
+# The orchestrator's start-task prompt directs the agent to read this file.
+write_task_config() {
     local worktree_path="$1"
-    local agent_cmd="$2"
-    local task_id="$3"
-    local task_filename="$4"
+    local task_id="$2"
+    local task_filename="$3"
 
-    local config_file
-    config_file=$(get_agent_config_filename "$agent_cmd")
+    local config_dir="$worktree_path/.wta"
+    local config_file="$config_dir/task-config.md"
+    mkdir -p "$config_dir"
 
-    cat > "$worktree_path/$config_file" <<AGENTCFG
+    cat > "$config_file" <<TASKCFG
 # Task: ${task_id}
 
 Read \`${task_filename}.md\` for your task description and acceptance criteria.
@@ -567,13 +563,14 @@ Do NOT modify any other file in \`.shared/\`.
 ## Important: Scaffolding Files
 
 The following files are plugin scaffolding injected into your worktree — they are NOT part of your task:
-- This file (\`${config_file}\`) — agent instructions, do NOT commit
+- This file (\`.wta/task-config.md\`) — agent instructions, do NOT commit
 - \`${task_filename}.md\` — your task description, do NOT commit
 - \`.shared/\` — symlink to shared context directory, do NOT commit
+- \`.wta/\` — plugin config directory, do NOT commit
 - \`wt-*.md\` — any task file in the worktree root, do NOT commit
 
 Do NOT \`git add\` these files. Only commit files related to your actual task fix.
-AGENTCFG
+TASKCFG
 }
 
 # Inject or update orchestrator awareness into a project's CLAUDE.md
@@ -583,9 +580,20 @@ inject_orchestrator_config() {
     local repo_path="$1"
 
     local claude_md="$repo_path/CLAUDE.md"
-    local wta_path="$PLUGIN_DIR/scripts/wta.sh"
     local start_marker="<!-- wta:orchestrator:start -->"
     local end_marker="<!-- wta:orchestrator:end -->"
+    local pyramid_start="<!-- wta:docs-pyramid:start -->"
+    local pyramid_end="<!-- wta:docs-pyramid:end -->"
+
+    # Serialize concurrent invocations (e.g. two prefix+G presses) — without
+    # a lock, racing read-modify-write cycles can duplicate or truncate the file.
+    local lock_file="$repo_path/.CLAUDE.md.wta-lock"
+    exec 9>"$lock_file"
+    if ! flock -x -w 10 9; then
+        log_error "Could not acquire CLAUDE.md lock within 10s — skipping injection"
+        exec 9>&-
+        return 1
+    fi
 
     # Write section to a temp file (avoids heredoc quoting issues in bash)
     local section_file
@@ -615,7 +623,7 @@ must go through \`wta spawn\` so each task gets its own branch and worktree.
 
 ### wta CLI
 
-Run commands with: \`bash ${wta_path} <command> [args...]\`
+The plugin adds \`wta\` to PATH for new tmux panes — invoke commands as \`wta <command> [args...]\`. If \`wta\` is not found (e.g. this pane started before the plugin loaded), open a new tmux pane.
 
 **Read-only** (use freely):
 
@@ -698,44 +706,37 @@ ${end_marker}
 WTA_EOF
 
     if [ -f "$claude_md" ]; then
-        # Pre-pass: strip any pre-existing docs-pyramid blocks. A prior bug
-        # placed the pyramid outside the orchestrator markers, so each
-        # prefix+G call carried stale blocks forward in after_file while
-        # injecting a fresh one — accumulating duplicates. The pyramid now
-        # lives inside the orchestrator markers (excised by the awk below),
-        # but this pre-pass self-heals files that still carry residue from
-        # the old logic, including any lingering stub references.
-        local pyramid_clean
-        pyramid_clean=$(mktemp)
-        awk '
-            /<!-- wta:docs-pyramid:start -->/ { skip=1; next }
-            /<!-- wta:docs-pyramid:end -->/   { skip=0; next }
-            !skip
-        ' "$claude_md" > "$pyramid_clean"
-        mv "$pyramid_clean" "$claude_md"
+        # Single-pass dedupe: strip ALL existing wta:orchestrator and wta:docs-pyramid
+        # blocks (handles legacy files that accumulated duplicates from earlier bugs,
+        # and removes the now-stale section so we can re-append a fresh one). Markers
+        # are passed as awk vars and matched with index() rather than as /regex/, so
+        # they remain robust if the marker strings ever change.
+        local cleaned
+        cleaned=$(mktemp)
+        awk -v ostart="$start_marker" -v oend="$end_marker" \
+            -v pstart="$pyramid_start" -v pend="$pyramid_end" '
+            index($0, ostart) { skip="orch"; next }
+            skip == "orch" && index($0, oend) { skip=""; next }
+            index($0, pstart) { skip="pyr"; next }
+            skip == "pyr" && index($0, pend) { skip=""; next }
+            skip == "" { print }
+        ' "$claude_md" > "$cleaned"
+        mv "$cleaned" "$claude_md"
 
-        if grep -q "$start_marker" "$claude_md"; then
-            # Replace existing section between markers
-            local before_file after_file tmpfile
-            before_file=$(mktemp)
-            after_file=$(mktemp)
-            tmpfile=$(mktemp)
-            awk "/$start_marker/{exit} {print}" "$claude_md" > "$before_file"
-            awk "found{print} /$end_marker/{found=1}" "$claude_md" > "$after_file"
-            cat "$before_file" "$section_file" "$after_file" > "$tmpfile"
-            mv "$tmpfile" "$claude_md"
-            rm -f "$before_file" "$after_file"
-        else
-            # Append to existing file
-            echo "" >> "$claude_md"
-            cat "$section_file" >> "$claude_md"
-        fi
+        # Append the freshly-rendered section
+        printf '\n' >> "$claude_md"
+        cat "$section_file" >> "$claude_md"
     else
         # Create new file
         cp "$section_file" "$claude_md"
     fi
 
     rm -f "$section_file"
+
+    # Release lock and remove lockfile
+    flock -u 9
+    exec 9>&-
+    rm -f "$lock_file"
 }
 
 # Set up .shared/ directory and symlink for a worktree
@@ -849,9 +850,16 @@ spawn_session_for_worktree() {
     local parent_branch="${9:-}"
     local parent_session="${10:-}"
 
-    # Auto-detect parent branch if not provided
+    # Auto-detect parent branch if not provided.
+    # If the main repo is in detached HEAD, `git rev-parse --abbrev-ref HEAD`
+    # returns the literal "HEAD" — saving that as parent_branch would silently
+    # break every later `git diff parent...HEAD` (empty diff → false-positive PASS
+    # in scope/broadcast/merge checks). Fall back to the repo's default branch.
     if [ -z "$parent_branch" ] && [ -d "$repo_path" ]; then
         parent_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if [ -z "$parent_branch" ] || [ "$parent_branch" = "HEAD" ]; then
+            parent_branch=$(get_default_branch "$repo_path")
+        fi
     fi
 
     # Auto-detect parent session if not provided

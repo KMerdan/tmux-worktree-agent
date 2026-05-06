@@ -104,12 +104,13 @@ prompt_start_task() {
     local text="Load the task and understand it fully before writing any code.
 ${branch_context}
 
-1. Read your task file and \`.shared/context.md\` to understand the full scope
-2. Check \`.shared/broadcasts/\` for updates from other agents working on parallel tasks
-3. Fact-check every assumption against the actual codebase — read the relevant files, trace the code paths, verify interfaces and types exist as described
-4. Only after you have confirmed your understanding matches reality, begin implementing
-5. Stay within your **Scoped Files** — do NOT modify files outside your listed scope. Out-of-scope changes will be rejected at merge time. If you need a file outside scope, note it in your broadcast under \`## Impact on Other Tasks\`.
-6. When finished, commit all changes and write your broadcast to \`.shared/broadcasts/TASK-<your-id>.md\` — do NOT merge into any branch. Your \`## Files Modified\` section must list every file you changed, exactly matching the actual paths. Inaccurate broadcasts will be rejected."
+1. Read \`.wta/task-config.md\` for the full scaffolding: scope rules, broadcast format, and which files are plugin-injected (do NOT commit those).
+2. Read your task file (\`wt-*.md\` in this worktree) and \`.shared/context.md\` to understand the full scope.
+3. Check \`.shared/broadcasts/\` for updates from other agents working on parallel tasks.
+4. Fact-check every assumption against the actual codebase — read the relevant files, trace the code paths, verify interfaces and types exist as described.
+5. Only after you have confirmed your understanding matches reality, begin implementing.
+6. Stay within your **Scoped Files** — do NOT modify files outside your listed scope. Out-of-scope changes will be rejected at merge time. If you need a file outside scope, note it in your broadcast under \`## Impact on Other Tasks\`.
+7. When finished, commit all changes and write your broadcast to \`.shared/broadcasts/TASK-<your-id>.md\` — do NOT merge into any branch. Your \`## Files Modified\` section must list every file you changed, exactly matching the actual paths. Inaccurate broadcasts will be rejected."
 
     send_prompt_to_agent "$text" "Start task prompt sent to agent"
 }
@@ -129,6 +130,12 @@ prompt_generate_tasks() {
     if [ -n "$repo_path" ]; then
         current_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
         short_sha=$(cd "$repo_path" && git rev-parse --short HEAD 2>/dev/null)
+        # Unborn HEAD: empty short_sha means agents will get a task.md with no
+        # commit anchor. The branch-strategy line is silently dropped below;
+        # warn the user so they understand the generated template is incomplete.
+        if [ -z "$short_sha" ]; then
+            log_warn "Repo has no commits — task.md will have no commit anchor (agents won't know which SHA to branch from)."
+        fi
     fi
 
     # Inject orchestrator config into project CLAUDE.md
@@ -141,8 +148,6 @@ prompt_generate_tasks() {
     if [ -n "$current_branch" ] && [ -n "$short_sha" ]; then
         branch_strategy="- Branch/merge strategy: all tasks branch from \`${current_branch}\` at commit \`${short_sha}\`. Merging back into \`${current_branch}\` is handled by the orchestrator — agents must NOT merge."
     fi
-
-    local wta_path="$PLUGIN_DIR/scripts/wta.sh"
 
     local text='Based on what we discussed, create a `task.md` file in the repository root that breaks down the work into separate, non-conflicting tasks. Each task must be independently implementable in its own git worktree without merge conflicts with other tasks.
 
@@ -245,6 +250,8 @@ After writing task.md:
 
 2. **Update CLAUDE.md** (Layer 1) to include the documentation table pointing to `.agent-docs/` layers. Keep CLAUDE.md under ~120 lines — it should contain project identity, build commands, rules, and a routing table to `.agent-docs/`. Check your CLAUDE.md for the pyramid maintenance rules and follow them.
 
+   **CRITICAL — preserve plugin-owned blocks:** CLAUDE.md may contain HTML-comment marker blocks like `<!-- wta:orchestrator:start -->...<!-- wta:orchestrator:end -->` and `<!-- wta:docs-pyramid:start -->...<!-- wta:docs-pyramid:end -->`. These were just injected by the orchestrator plugin and contain the wta CLI reference. Copy them through **verbatim** — do NOT rewrite, summarize, reformat, or remove them. If you restructure CLAUDE.md, leave any `<!-- wta:* -->` block exactly as you found it. The plugin manages those blocks; your edits to the rest of the file should not touch them.
+
 3. Reference `.agent-docs/AGENTS.md` + the relevant `.agent-docs/context/*.md` file(s) in the task.md preamble so spawned agents know exactly what to read.
 
 4. **Configure validation** (recommended): Create `.wta/validate.conf` in the repo root with build and test commands for the project:
@@ -306,7 +313,7 @@ ${branch_context}
 ## What You Can Do (mutating)
 
 - \`wta send <session> <text>\` — answer a dialog / nudge an agent
-- \`git -C <main_repo_path> merge <branch> --no-edit\` — integrate finished work
+- \`git -C ${repo_path} merge <branch> --no-edit\` — integrate finished work
 - \`wta kill <session>\` — cleanup session + worktree + branch
 - edit \`task.md\` — flip \`- [ ]\` → \`- [x]\`
 

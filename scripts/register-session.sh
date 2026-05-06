@@ -38,6 +38,9 @@ main() {
     if cd "$pane_cwd" && git rev-parse --show-toplevel >/dev/null 2>&1; then
         repo_path=$(git rev-parse --show-toplevel)
         branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        # Detached HEAD returns the literal "HEAD" — clear it so downstream
+        # `${branch:-unknown}` displays "unknown" rather than the misleading "HEAD".
+        [ "$branch" = "HEAD" ] && branch=""
         repo_name=$(get_repo_name "$repo_path")
     fi
 
@@ -148,10 +151,15 @@ main() {
         agent_running=true
     fi
 
-    # Detect parent branch from main repo
+    # Detect parent branch from main repo. If the main repo is detached, use the
+    # default branch instead of saving the literal "HEAD" (which would silently
+    # break downstream `git diff parent...HEAD` validation).
     local parent_branch=""
     if [ -n "$main_repo_path" ] && [ -d "$main_repo_path" ]; then
         parent_branch=$(cd "$main_repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if [ -z "$parent_branch" ] || [ "$parent_branch" = "HEAD" ]; then
+            parent_branch=$(get_default_branch "$main_repo_path")
+        fi
     fi
 
     save_session "$session_name" \

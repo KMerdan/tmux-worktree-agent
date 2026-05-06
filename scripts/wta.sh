@@ -21,8 +21,17 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so invocations through bin/wta (the PATH shim) find utils.sh
+# in scripts/ rather than bin/. Portable across BSD/macOS where readlink lacks -f.
+_wta_src="${BASH_SOURCE[0]}"
+while [ -L "$_wta_src" ]; do
+    _wta_dir="$(cd -P "$(dirname "$_wta_src")" && pwd)"
+    _wta_src="$(readlink "$_wta_src")"
+    [[ "$_wta_src" != /* ]] && _wta_src="$_wta_dir/$_wta_src"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_wta_src")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+unset _wta_src _wta_dir
 
 source "$SCRIPT_DIR/utils.sh"
 source "$PLUGIN_DIR/lib/metadata.sh"
@@ -366,17 +375,23 @@ SETTINGS_EOF
     # Create tmux session (no switch)
     create_tmux_session "$session_name" "$worktree_path" "$launch_agent" "$agent_cmd" "$topic" "$branch_name"
 
-    # Auto-detect parent branch
+    # Auto-detect parent branch.
+    # `git rev-parse --abbrev-ref HEAD` returns the literal "HEAD" on a detached
+    # HEAD, which would poison every downstream `git diff parent...HEAD` (empty
+    # diff → all validation passes silently). Substitute the repo's default branch.
     local parent_branch=""
     parent_branch=$(cd "$repo_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ -z "$parent_branch" ] || [ "$parent_branch" = "HEAD" ]; then
+        parent_branch=$(get_default_branch "$repo_path")
+    fi
 
     # Save metadata
     save_session "$session_name" "$repo_name" "$topic" "$branch_name" \
         "$worktree_path" "$repo_path" "$launch_agent" "$found_title" "$agent_cmd" \
         "$parent_branch" "$parent_session"
 
-    # Write agent config
-    write_agent_config "$worktree_path" "$agent_cmd" "$found_tid" "$branch_filename"
+    # Write task config (.wta/task-config.md — agent reads it via the start-task prompt)
+    write_task_config "$worktree_path" "$found_tid" "$branch_filename"
 
     echo "Spawned: $session_name"
     echo "  Branch:    $branch_name"

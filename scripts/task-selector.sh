@@ -282,12 +282,8 @@ spawn_task_worktrees() {
             continue
         fi
 
-        # Write agent config file after spawn (now we know which agent was chosen)
-        local agent_cmd_used
-        agent_cmd_used=$(get_session_field "$session_name" "agent_cmd" 2>/dev/null)
-        if [ -n "$agent_cmd_used" ]; then
-            write_agent_config "$worktree_path" "$agent_cmd_used" "$task_id" "$branch_filename"
-        fi
+        # Write task config (agent-agnostic — file at .wta/task-config.md)
+        write_task_config "$worktree_path" "$task_id" "$branch_filename"
 
         created_sessions+=("$session_name")
         if [ -z "$first_session" ]; then

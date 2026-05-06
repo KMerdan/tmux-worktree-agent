@@ -69,6 +69,17 @@ tmux set-environment -g WORKTREE_AGENT_LIST "$agent_list"
 tmux set-environment -g WORKTREE_AUTO_AGENT "$auto_agent"
 tmux set-environment -g WORKTREE_PLUGIN_DIR "$CURRENT_DIR"
 
+# Make `wta` discoverable on PATH for new tmux panes (cross-machine, no manual setup)
+plugin_bin="$CURRENT_DIR/bin"
+mkdir -p "$plugin_bin"
+[ -e "$plugin_bin/wta" ] || ln -sf ../scripts/wta.sh "$plugin_bin/wta"
+existing_path=$(tmux show-environment -g PATH 2>/dev/null | sed 's/^PATH=//')
+[ -z "$existing_path" ] && existing_path="$PATH"
+case ":$existing_path:" in
+    *":$plugin_bin:"*) ;;
+    *) tmux set-environment -g PATH "$plugin_bin:$existing_path" ;;
+esac
+
 # Set up keybindings (using larger popups for better visibility)
 # Session name: scripts use get_current_session() which falls back to
 # tmux display-message -p '#S' inside popups — no env var needed.

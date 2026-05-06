@@ -49,6 +49,16 @@ main() {
     local parent_session
     parent_session=$(get_current_session 2>/dev/null || true)
 
+    # Refuse to operate on an unborn HEAD — `git worktree add` would silently
+    # create an orphan branch with disjoint history. The user must create at
+    # least one commit themselves; the plugin does not auto-commit.
+    cd "$repo_path" || exit 1
+    if ! repo_has_commits; then
+        log_error "Repository has no commits — cannot create a worktree from an unborn HEAD."
+        log_error "Make at least one commit first (e.g. \`git commit --allow-empty -m initial\`)."
+        exit 1
+    fi
+
     # Step 2: Get branch and topic
     if [ "$QUICK_MODE" = true ]; then
         # Quick mode: topic only, auto-generate branch from current HEAD
@@ -56,7 +66,8 @@ main() {
         current_branch=$(get_current_branch)
 
         if [ -z "$current_branch" ] || [ "$current_branch" = "HEAD" ]; then
-            log_error "Not on a valid branch. Use full create mode (prefix + C-w)"
+            log_error "Detached HEAD — checkout a named branch before using quick mode (prefix+W)."
+            log_error "Or use full create mode (prefix+C-w) to pick a branch interactively."
             exit 1
         fi
 

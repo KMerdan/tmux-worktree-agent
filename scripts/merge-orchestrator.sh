@@ -53,11 +53,17 @@ build_merge_prompt() {
             wt_path=$(get_session_field "$session" "worktree_path")
             topic=$(get_session_field "$session" "topic")
 
-            # Check if branch has actual commits ahead of base branch
+            # Check if branch has actual commits ahead of base branch.
+            # `cd ... 2>/dev/null` without `|| continue` would silently fall through
+            # and run subsequent git commands in whatever the shell's cwd happens to
+            # be — producing wrong `ahead` counts attributed to unrelated repos.
             local has_commits="no"
             local merged="no"
             if [ -n "$branch" ]; then
-                cd "$repo_path" 2>/dev/null
+                if ! cd "$repo_path" 2>/dev/null; then
+                    log_warn "Skipping session '$session': repo path '$repo_path' is not accessible"
+                    continue
+                fi
                 local ahead
                 ahead=$(git log --oneline "${base_branch}..${branch}" 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$ahead" -gt 0 ]; then
@@ -70,7 +76,10 @@ build_merge_prompt() {
 
             local has_uncommitted="no"
             if [ -d "$wt_path" ]; then
-                cd "$wt_path" 2>/dev/null
+                if ! cd "$wt_path" 2>/dev/null; then
+                    log_warn "Skipping session '$session': worktree path '$wt_path' became inaccessible"
+                    continue
+                fi
                 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
                     has_uncommitted="yes"
                 fi
